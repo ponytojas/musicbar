@@ -88,11 +88,36 @@ final class MusicController {
     }
 
     /// Cover art of the current track on the active player, nil when unavailable.
-    func fetchArtwork() async -> NSImage? {
+    func fetchArtwork(title: String, artist: String) async -> NSImage? {
         switch activePlayer {
-        case .appleMusic: fetchAppleMusicArtwork()
-        case .spotify: await fetchSpotifyArtwork()
+        case .appleMusic:
+            if let image = fetchAppleMusicArtwork() { return image }
+            // Streaming tracks often expose artwork late or never; retry once,
+            // then fall back to the iTunes Search API.
+            try? await Task.sleep(for: .seconds(2))
+            if let image = fetchAppleMusicArtwork() { return image }
+            return await fetchArtworkFromITunesSearch(title: title, artist: artist)
+        case .spotify:
+            return await fetchSpotifyArtwork()
         }
+    }
+
+    private func fetchArtworkFromITunesSearch(title: String, artist: String) async -> NSImage? {
+        var components = URLComponents(string: "https://itunes.apple.com/search")!
+        components.queryItems = [
+            URLQueryItem(name: "term", value: "\(artist) \(title)"),
+            URLQueryItem(name: "media", value: "music"),
+            URLQueryItem(name: "limit", value: "1"),
+        ]
+        guard let url = components.url,
+              let (data, _) = try? await URLSession.shared.data(from: url),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let results = json["results"] as? [[String: Any]],
+              let artworkURLString = results.first?["artworkUrl100"] as? String,
+              let artworkURL = URL(string: artworkURLString.replacingOccurrences(of: "100x100", with: "300x300")),
+              let (imageData, _) = try? await URLSession.shared.data(from: artworkURL)
+        else { return nil }
+        return NSImage(data: imageData)
     }
 
     private func fetchAppleMusicArtwork() -> NSImage? {

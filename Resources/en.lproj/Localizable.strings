@@ -4,6 +4,15 @@
 "Show album artwork" = "Show album artwork";
 "Show equalizer" = "Show equalizer";
 "Show artist name" = "Show artist name";
+"Equalizer" = "Equalizer";
+"Position" = "Position";
+"Left of title" = "Left of title";
+"Right of title" = "Right of title";
+"Color" = "Color";
+"Default" = "Default";
+"Single color" = "Single color";
+"Rainbow" = "Rainbow";
+"Custom color" = "Custom color";
 "Title width" = "Title width";
 "Auto-scroll after" = "Auto-scroll after";
 "5 seconds" = "5 seconds";

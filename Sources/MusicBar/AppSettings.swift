@@ -1,4 +1,14 @@
-import Foundation
+import SwiftUI
+
+enum EqualizerPosition: String, CaseIterable {
+    case left, right
+}
+
+enum EqualizerColorMode: String, CaseIterable {
+    case system   // menu bar's default monochrome
+    case custom   // single user-picked color
+    case rainbow  // animated hue cycle
+}
 
 /// User preferences, persisted in UserDefaults. Shared by the menu bar view
 /// and the settings window.
@@ -20,6 +30,20 @@ final class AppSettings: ObservableObject {
     @Published var holdSeconds: Int {
         didSet { UserDefaults.standard.set(holdSeconds, forKey: "holdSeconds") }
     }
+    @Published var equalizerPosition: EqualizerPosition {
+        didSet { UserDefaults.standard.set(equalizerPosition.rawValue, forKey: "equalizerPosition") }
+    }
+    @Published var equalizerColorMode: EqualizerColorMode {
+        didSet { UserDefaults.standard.set(equalizerColorMode.rawValue, forKey: "equalizerColorMode") }
+    }
+    @Published var equalizerColorHex: String {
+        didSet { UserDefaults.standard.set(equalizerColorHex, forKey: "equalizerColorHex") }
+    }
+
+    var equalizerColor: Color {
+        get { Color(hex: equalizerColorHex) }
+        set { equalizerColorHex = newValue.hexString }
+    }
 
     private init() {
         let defaults = UserDefaults.standard
@@ -29,11 +53,39 @@ final class AppSettings: ObservableObject {
             "showArtist": true,
             "textWidth": 150.0,
             "holdSeconds": 10,
+            "equalizerPosition": EqualizerPosition.left.rawValue,
+            "equalizerColorMode": EqualizerColorMode.system.rawValue,
+            "equalizerColorHex": "#FF375F",
         ])
         showArtwork = defaults.bool(forKey: "showArtwork")
         showEqualizer = defaults.bool(forKey: "showEqualizer")
         showArtist = defaults.bool(forKey: "showArtist")
         textWidth = defaults.double(forKey: "textWidth")
         holdSeconds = defaults.integer(forKey: "holdSeconds")
+        equalizerPosition = EqualizerPosition(rawValue: defaults.string(forKey: "equalizerPosition") ?? "") ?? .left
+        equalizerColorMode = EqualizerColorMode(rawValue: defaults.string(forKey: "equalizerColorMode") ?? "") ?? .system
+        equalizerColorHex = defaults.string(forKey: "equalizerColorHex") ?? "#FF375F"
+    }
+}
+
+extension Color {
+    init(hex: String) {
+        var value: UInt64 = 0
+        Scanner(string: hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))).scanHexInt64(&value)
+        self.init(
+            red: Double((value >> 16) & 0xFF) / 255,
+            green: Double((value >> 8) & 0xFF) / 255,
+            blue: Double(value & 0xFF) / 255
+        )
+    }
+
+    var hexString: String {
+        let color = NSColor(self).usingColorSpace(.sRGB) ?? .white
+        return String(
+            format: "#%02X%02X%02X",
+            Int(round(color.redComponent * 255)),
+            Int(round(color.greenComponent * 255)),
+            Int(round(color.blueComponent * 255))
+        )
     }
 }

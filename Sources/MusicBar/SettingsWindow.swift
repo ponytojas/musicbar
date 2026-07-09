@@ -36,8 +36,28 @@ struct SettingsView: View {
 
             Section("Menu Bar") {
                 Toggle("Show album artwork", isOn: $settings.showArtwork)
-                Toggle("Show equalizer", isOn: $settings.showEqualizer)
                 Toggle("Show artist name", isOn: $settings.showArtist)
+            }
+
+            Section("Equalizer") {
+                Toggle("Show equalizer", isOn: $settings.showEqualizer)
+                if settings.showEqualizer {
+                    Picker("Position", selection: $settings.equalizerPosition) {
+                        Text("Left of title").tag(EqualizerPosition.left)
+                        Text("Right of title").tag(EqualizerPosition.right)
+                    }
+                    Picker("Color", selection: $settings.equalizerColorMode) {
+                        Text("Default").tag(EqualizerColorMode.system)
+                        Text("Single color").tag(EqualizerColorMode.custom)
+                        Text("Rainbow").tag(EqualizerColorMode.rainbow)
+                    }
+                    if settings.equalizerColorMode == .custom {
+                        ColorPicker("Custom color", selection: Binding(
+                            get: { settings.equalizerColor },
+                            set: { settings.equalizerColor = $0 }
+                        ), supportsOpacity: false)
+                    }
+                }
             }
 
             Section {
@@ -64,7 +84,7 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 380, height: 360)
+        .frame(width: 380, height: 520)
     }
 
     private func setLaunchAtLogin(_ enabled: Bool) {

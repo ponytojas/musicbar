@@ -4,6 +4,15 @@
 "Show album artwork" = "Mostrar carátula del álbum";
 "Show equalizer" = "Mostrar ecualizador";
 "Show artist name" = "Mostrar nombre del artista";
+"Equalizer" = "Ecualizador";
+"Position" = "Posición";
+"Left of title" = "A la izquierda del título";
+"Right of title" = "A la derecha del título";
+"Color" = "Color";
+"Default" = "Por defecto";
+"Single color" = "Color único";
+"Rainbow" = "Arcoíris";
+"Custom color" = "Color personalizado";
 "Title width" = "Ancho del título";
 "Auto-scroll after" = "Desplazar tras";
 "5 seconds" = "5 segundos";

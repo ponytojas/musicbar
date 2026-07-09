@@ -13,17 +13,26 @@ struct StatusBarView: View {
     var body: some View {
         HStack(spacing: 6) {
             if settings.showArtwork, let artwork = model.artwork {
-                Image(nsImage: artwork)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: 17, height: 17)
-                    .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-                    .transition(.scale(scale: 0.6).combined(with: .opacity))
+                // ZStack keeps a single 17 pt slot while the old cover
+                // animates out and the new one in (id swap = new identity).
+                ZStack {
+                    Image(nsImage: artwork)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 17, height: 17)
+                        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                        .id(ObjectIdentifier(artwork))
+                        .transition(.asymmetric(
+                            insertion: .scale(scale: 0.6).combined(with: .opacity),
+                            removal: .opacity
+                        ))
+                }
+                .frame(width: 17, height: 17)
             }
 
             if model.hasTrack {
-                if settings.showEqualizer {
-                    EqualizerView(isPlaying: model.isPlaying, screenActive: model.screenActive)
+                if settings.showEqualizer && settings.equalizerPosition == .left {
+                    equalizer
                 }
 
                 MarqueeText(text: displayText, maxWidth: settings.textWidth, model: model, settings: settings)
@@ -32,6 +41,10 @@ struct StatusBarView: View {
                         insertion: .move(edge: .bottom).combined(with: .opacity),
                         removal: .move(edge: .top).combined(with: .opacity)
                     ))
+
+                if settings.showEqualizer && settings.equalizerPosition == .right {
+                    equalizer
+                }
             } else {
                 Image(systemName: "music.note")
                     .font(.system(size: 12, weight: .semibold))
@@ -43,10 +56,20 @@ struct StatusBarView: View {
         .clipped()
         .animation(.spring(duration: 0.4), value: displayText)
         .animation(.spring(duration: 0.4), value: model.isPlaying)
-        .animation(.spring(duration: 0.4), value: model.artwork != nil)
+        .animation(.spring(duration: 0.4), value: model.artwork.map(ObjectIdentifier.init))
         .animation(.spring(duration: 0.4), value: settings.showArtwork)
         .animation(.spring(duration: 0.4), value: settings.showEqualizer)
         .animation(.spring(duration: 0.4), value: settings.textWidth)
+        .animation(.spring(duration: 0.4), value: settings.equalizerPosition)
+    }
+
+    private var equalizer: some View {
+        EqualizerView(
+            isPlaying: model.isPlaying,
+            screenActive: model.screenActive,
+            colorMode: settings.equalizerColorMode,
+            customColor: settings.equalizerColor
+        )
     }
 }
 
@@ -55,6 +78,8 @@ struct StatusBarView: View {
 struct EqualizerView: View {
     let isPlaying: Bool
     var screenActive: Bool = true
+    var colorMode: EqualizerColorMode = .system
+    var customColor: Color = .primary
 
     private let frequencies: [Double] = [4.1, 5.3, 3.4]
     private let phases: [Double] = [0, 1.3, 2.6]
@@ -65,6 +90,7 @@ struct EqualizerView: View {
             HStack(alignment: .bottom, spacing: 1.5) {
                 ForEach(0..<3, id: \.self) { index in
                     Capsule()
+                        .fill(barColor(index: index, time: time))
                         .frame(width: 2, height: barHeight(index: index, time: time))
                 }
             }
@@ -77,6 +103,22 @@ struct EqualizerView: View {
         guard isPlaying else { return 3 }
         let normalized = (sin(time * frequencies[index] + phases[index]) + 1) / 2
         return 3 + normalized * 9
+    }
+
+    private func barColor(index: Int, time: TimeInterval) -> Color {
+        switch colorMode {
+        case .system:
+            .primary
+        case .custom:
+            customColor
+        case .rainbow:
+            // Slow hue cycle, offset per bar; freezes with the timeline.
+            Color(
+                hue: (time * 0.12 + Double(index) * 0.18).truncatingRemainder(dividingBy: 1),
+                saturation: 0.85,
+                brightness: 1
+            )
+        }
     }
 }
 

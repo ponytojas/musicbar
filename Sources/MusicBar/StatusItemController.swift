@@ -182,7 +182,7 @@ final class StatusItemController: NSObject {
         lastArtworkKey = key
         Task { @MainActor [weak self] in
             guard let self else { return }
-            let image = await self.music.fetchArtwork()
+            let image = await self.music.fetchArtwork(title: self.model.title, artist: self.model.artist)
             // The track may have changed while the artwork was loading.
             if self.lastArtworkKey == key {
                 self.model.artwork = image
