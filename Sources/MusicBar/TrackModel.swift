@@ -15,16 +15,17 @@ final class TrackModel: ObservableObject {
         artist.isEmpty ? title : "\(title) — \(artist)"
     }
 
+    /// Assigns only what changed — @Published fires objectWillChange even for
+    /// identical values, and the periodic reconcile usually re-reports the
+    /// same state.
     func update(title: String, artist: String, isPlaying: Bool) {
-        self.title = title
-        self.artist = artist
-        self.isPlaying = isPlaying
+        if self.title != title { self.title = title }
+        if self.artist != artist { self.artist = artist }
+        if self.isPlaying != isPlaying { self.isPlaying = isPlaying }
     }
 
     func clear() {
-        title = ""
-        artist = ""
-        isPlaying = false
-        artwork = nil
+        update(title: "", artist: "", isPlaying: false)
+        if artwork != nil { artwork = nil }
     }
 }

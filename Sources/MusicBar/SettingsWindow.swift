@@ -3,7 +3,7 @@ import ServiceManagement
 import SwiftUI
 
 @MainActor
-final class SettingsWindowController {
+final class SettingsWindowController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
 
     func show() {
@@ -13,11 +13,20 @@ final class SettingsWindowController {
             window.title = NSLocalizedString("MusicBar Settings", comment: "")
             window.styleMask = [.titled, .closable]
             window.isReleasedWhenClosed = false
+            window.delegate = self
             window.center()
+            // The window is recreated on each open; restore its last position.
+            window.setFrameAutosaveName("SettingsWindow")
             self.window = window
         }
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
+    }
+
+    /// Drop the window (and its SwiftUI hierarchy) once closed instead of
+    /// keeping it alive for the rest of the app's life.
+    func windowWillClose(_ notification: Notification) {
+        window = nil
     }
 }
 

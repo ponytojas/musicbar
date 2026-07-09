@@ -153,7 +153,9 @@ struct MarqueeText: View {
             .clipped()
             .mask(edgeFadeMask)
             .onPreferenceChange(TextWidthKey.self) { fullTextWidth = $0 }
-            .task(id: text) { await runMarquee() }
+            // needsScroll in the id: fitting text runs no loop at all, and the
+            // task restarts once the measured width shows scrolling is needed.
+            .task(id: "\(text)|\(needsScroll)") { await runMarquee() }
     }
 
     /// Soft fade on the clipped edges so scrolling text doesn't cut off hard.
@@ -170,6 +172,7 @@ struct MarqueeText: View {
 
     private func runMarquee() async {
         offset = 0
+        guard needsScroll else { return }
         while !Task.isCancelled {
             // Hold until the interval elapses or the mouse hovers the item.
             var waited: Double = 0
@@ -177,11 +180,6 @@ struct MarqueeText: View {
                 try? await Task.sleep(for: .milliseconds(100))
                 if Task.isCancelled { return }
                 waited += 0.1
-            }
-            guard needsScroll else {
-                // Text fits; idle so a constant hover doesn't busy-loop.
-                try? await Task.sleep(for: .seconds(1))
-                continue
             }
 
             let distance = fullTextWidth - maxWidth + 8

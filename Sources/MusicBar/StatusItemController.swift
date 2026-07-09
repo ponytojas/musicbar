@@ -12,6 +12,10 @@ final class StatusItemController: NSObject {
     private var singleClickTimer: Timer?
     private var refreshTimer: Timer?
     private var lastArtworkKey: String?
+    private var isRefreshing = false
+    /// Post-command reconcile; cancelled when the player's own notification
+    /// arrives first so we don't fetch the same state twice.
+    private var pendingReconcile: Task<Void, Never>?
 
     override init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -21,12 +25,17 @@ final class StatusItemController: NSObject {
         observePlayerNotifications()
         observeScreenState()
         runFirstLaunchPermissionFlow()
-        refresh()
+        Task { await refresh() }
 
-        // Fallback reconciliation in case a notification is missed.
+        // Fallback reconciliation in case a notification is missed. Skipped
+        // while the screen is locked/asleep; the wake handler reconciles.
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.refresh() }
+            Task { @MainActor in
+                guard let self, self.model.screenActive else { return }
+                await self.refresh()
+            }
         }
+        refreshTimer?.tolerance = 5
     }
 
     // MARK: - Setup
@@ -80,7 +89,11 @@ final class StatusItemController: NSObject {
     }
 
     @objc nonisolated private func screenBecameActive() {
-        Task { @MainActor in self.model.screenActive = true }
+        Task { @MainActor in
+            self.model.screenActive = true
+            // Catch up on anything missed while refreshes were paused.
+            await self.refresh()
+        }
     }
 
     // MARK: - Automation permission (first run)
@@ -147,10 +160,15 @@ final class StatusItemController: NSObject {
     // MARK: - State
 
     private func handlePlayerInfo(_ userInfo: [AnyHashable: Any]?, from player: PlayerApp) {
+        // The notification carries the fresh state; a pending post-command
+        // reconcile would only re-fetch the same thing.
+        pendingReconcile?.cancel()
+        pendingReconcile = nil
+
         let state = (userInfo?["Player State"] as? String) ?? "Stopped"
         if state == "Stopped" {
             // Another player might still be active; re-scan.
-            if player == music.activePlayer { refresh() }
+            if player == music.activePlayer { Task { await refresh() } }
             return
         }
         music.activePlayer = player
@@ -163,8 +181,13 @@ final class StatusItemController: NSObject {
         updateAccessibility()
     }
 
-    private func refresh() {
-        if let nowPlaying = music.fetchNowPlaying() {
+    private func refresh() async {
+        // Coalesce: a refresh already in flight will land the same state.
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        defer { isRefreshing = false }
+
+        if let nowPlaying = await music.fetchNowPlaying() {
             model.update(title: nowPlaying.title, artist: nowPlaying.artist, isPlaying: nowPlaying.isPlaying)
             refreshArtworkIfNeeded()
         } else {
@@ -243,10 +266,13 @@ final class StatusItemController: NSObject {
     }
 
     /// Give the player a moment to apply the command before reconciling.
+    /// Fallback only — cancelled if the player's notification arrives first.
     private func refreshSoon() {
-        Task { @MainActor in
+        pendingReconcile?.cancel()
+        pendingReconcile = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(300))
-            refresh()
+            guard !Task.isCancelled else { return }
+            await refresh()
         }
     }
 
