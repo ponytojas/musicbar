@@ -133,8 +133,16 @@ final class MusicController {
         )
     }
 
+    /// Current track's cover in the two sizes the app displays.
+    struct Artwork {
+        /// Small decode for the 17 pt menu bar slot.
+        let thumbnail: NSImage
+        /// Larger decode for the hover popup card.
+        let full: NSImage
+    }
+
     /// Cover art of the current track on the active player, nil when unavailable.
-    func fetchArtwork(title: String, artist: String) async -> NSImage? {
+    func fetchArtwork(title: String, artist: String) async -> Artwork? {
         switch activePlayer {
         case .appleMusic:
             if let image = await fetchAppleMusicArtwork() { return image }
@@ -148,7 +156,7 @@ final class MusicController {
         }
     }
 
-    private func fetchArtworkFromITunesSearch(title: String, artist: String) async -> NSImage? {
+    private func fetchArtworkFromITunesSearch(title: String, artist: String) async -> Artwork? {
         var components = URLComponents(string: "https://itunes.apple.com/search")!
         components.queryItems = [
             URLQueryItem(name: "term", value: "\(artist) \(title)"),
@@ -160,13 +168,13 @@ final class MusicController {
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let results = json["results"] as? [[String: Any]],
               let artworkURLString = results.first?["artworkUrl100"] as? String,
-              let artworkURL = URL(string: artworkURLString.replacingOccurrences(of: "100x100", with: "300x300")),
+              let artworkURL = URL(string: artworkURLString.replacingOccurrences(of: "100x100", with: "600x600")),
               let (imageData, _) = try? await URLSession.shared.data(from: artworkURL)
         else { return nil }
-        return await Self.decodeThumbnail(from: imageData)
+        return await Self.decodeArtwork(from: imageData)
     }
 
-    private func fetchAppleMusicArtwork() async -> NSImage? {
+    private func fetchAppleMusicArtwork() async -> Artwork? {
         guard PlayerApp.appleMusic.isRunning else { return nil }
         let source = """
         tell application "Music"
@@ -180,11 +188,11 @@ final class MusicController {
         """
         guard let descriptor = await scriptRunner.run(source) else { return nil }
         if let text = descriptor.stringValue, text.isEmpty { return nil }
-        return await Self.decodeThumbnail(from: descriptor.data)
+        return await Self.decodeArtwork(from: descriptor.data)
     }
 
     /// Spotify exposes artwork as an https URL instead of raw data.
-    private func fetchSpotifyArtwork() async -> NSImage? {
+    private func fetchSpotifyArtwork() async -> Artwork? {
         guard PlayerApp.spotify.isRunning else { return nil }
         let source = """
         tell application "Spotify"
@@ -197,14 +205,20 @@ final class MusicController {
               url.scheme == "https" || url.scheme == "http"
         else { return nil }
         guard let (data, _) = try? await URLSession.shared.data(from: url) else { return nil }
-        return await Self.decodeThumbnail(from: data)
+        return await Self.decodeArtwork(from: data)
     }
 
-    /// The menu bar shows covers at 17 pt; decode a small thumbnail instead of
-    /// keeping the full-size image (Music can return multi-megapixel artwork).
+    /// The menu bar shows covers at 17 pt and the hover popup at ~170 pt;
+    /// decode one small and one popup-sized image instead of keeping the
+    /// full-size original (Music can return multi-megapixel artwork).
     /// Decoding forces a full-image decode, so it runs off the main actor.
-    private static func decodeThumbnail(from data: Data) async -> NSImage? {
-        await Task.detached(priority: .utility) { thumbnail(from: data) }.value
+    private static func decodeArtwork(from data: Data) async -> Artwork? {
+        await Task.detached(priority: .utility) {
+            guard let small = thumbnail(from: data, maxPixelSize: 68),
+                  let large = thumbnail(from: data, maxPixelSize: 512)
+            else { return nil }
+            return Artwork(thumbnail: small, full: large)
+        }.value
     }
 
     private nonisolated static func thumbnail(from data: Data, maxPixelSize: CGFloat = 68) -> NSImage? {

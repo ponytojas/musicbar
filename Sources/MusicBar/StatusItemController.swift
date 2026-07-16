@@ -8,6 +8,7 @@ final class StatusItemController: NSObject {
     private let music = MusicController()
     private let model = TrackModel()
     private let settingsWindow = SettingsWindowController()
+    private lazy var hoverPopup = HoverPopupController(model: model)
 
     private var singleClickTimer: Timer?
     private var refreshTimer: Timer?
@@ -48,7 +49,9 @@ final class StatusItemController: NSObject {
 
         let hosting = PassThroughHostingView(rootView: StatusBarView(model: model))
         hosting.onHoverChange = { [weak self] hovering in
-            self?.model.isHovering = hovering
+            guard let self else { return }
+            self.model.isHovering = hovering
+            self.hoverPopup.setHovering(hovering, relativeTo: self.statusItem.button)
         }
         hosting.translatesAutoresizingMaskIntoConstraints = false
         button.addSubview(hosting)
@@ -205,10 +208,11 @@ final class StatusItemController: NSObject {
         lastArtworkKey = key
         Task { @MainActor [weak self] in
             guard let self else { return }
-            let image = await self.music.fetchArtwork(title: self.model.title, artist: self.model.artist)
+            let artwork = await self.music.fetchArtwork(title: self.model.title, artist: self.model.artist)
             // The track may have changed while the artwork was loading.
             if self.lastArtworkKey == key {
-                self.model.artwork = image
+                self.model.artwork = artwork?.thumbnail
+                self.model.artworkLarge = artwork?.full
             }
         }
     }
@@ -229,6 +233,9 @@ final class StatusItemController: NSObject {
 
     @objc private func handleClick() {
         guard let event = NSApp.currentEvent else { return }
+
+        // Don't leave the popup floating over a menu or while interacting.
+        hoverPopup.setHovering(false, relativeTo: nil)
 
         if event.type == .rightMouseUp {
             showContextMenu()

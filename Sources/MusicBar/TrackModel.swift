@@ -6,6 +6,8 @@ final class TrackModel: ObservableObject {
     @Published var artist: String = ""
     @Published var isPlaying: Bool = false
     @Published var artwork: NSImage?
+    /// Popup-sized decode of the same cover; `artwork` stays menu-bar small.
+    @Published var artworkLarge: NSImage?
     @Published var isHovering: Bool = false
     @Published var screenActive: Bool = true
 
@@ -27,5 +29,6 @@ final class TrackModel: ObservableObject {
     func clear() {
         update(title: "", artist: "", isPlaying: false)
         if artwork != nil { artwork = nil }
+        if artworkLarge != nil { artworkLarge = nil }
     }
 }
