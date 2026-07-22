@@ -7,16 +7,31 @@ final class StatusItemController: NSObject {
     private let statusItem: NSStatusItem
     private let music = MusicController()
     private let model = TrackModel()
+    private let waveformModel = AudioWaveformModel()
     private let settingsWindow = SettingsWindowController()
-    private lazy var hoverPopup = HoverPopupController(model: model)
+    private lazy var waveformCapture = AudioWaveformCapture(
+        onLevels: { [weak self] levels in
+            Task { @MainActor [weak self] in self?.waveformModel.ingest(levels) }
+        },
+        onStopped: { [weak self] in
+            Task { @MainActor [weak self] in self?.waveformModel.reset() }
+        }
+    )
+    private lazy var hoverPopup = HoverPopupController(model: model) { [weak self] in
+        self?.loadLargeArtworkIfNeeded()
+    }
 
     private var singleClickTimer: Timer?
     private var refreshTimer: Timer?
     private var lastArtworkKey: String?
+    private var artworkSourceData: Data?
+    private var artworkTask: Task<Void, Never>?
+    private var largeArtworkTask: Task<Void, Never>?
     private var isRefreshing = false
     /// Post-command reconcile; cancelled when the player's own notification
     /// arrives first so we don't fetch the same state twice.
     private var pendingReconcile: Task<Void, Never>?
+    private var settingsCancellable: AnyCancellable?
 
     override init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -24,19 +39,21 @@ final class StatusItemController: NSObject {
 
         configureButton()
         observePlayerNotifications()
+        observePlayerLifecycle()
         observeScreenState()
+        observeWaveformSetting()
         runFirstLaunchPermissionFlow()
         Task { await refresh() }
 
         // Fallback reconciliation in case a notification is missed. Skipped
         // while the screen is locked/asleep; the wake handler reconciles.
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: 120, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self, self.model.screenActive else { return }
                 await self.refresh()
             }
         }
-        refreshTimer?.tolerance = 5
+        refreshTimer?.tolerance = 30
     }
 
     // MARK: - Setup
@@ -47,7 +64,7 @@ final class StatusItemController: NSObject {
         button.action = #selector(handleClick)
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
 
-        let hosting = PassThroughHostingView(rootView: StatusBarView(model: model))
+        let hosting = PassThroughHostingView(rootView: StatusBarView(model: model, waveform: waveformModel))
         hosting.onHoverChange = { [weak self] hovering in
             guard let self else { return }
             self.model.isHovering = hovering
@@ -71,8 +88,37 @@ final class StatusItemController: NSObject {
                 object: nil,
                 queue: .main
             ) { [weak self] note in
-                let userInfo = note.userInfo
-                Task { @MainActor in self?.handlePlayerInfo(userInfo, from: player) }
+                let state = (note.userInfo?["Player State"] as? String) ?? "Stopped"
+                let title = (note.userInfo?["Name"] as? String) ?? ""
+                let artist = (note.userInfo?["Artist"] as? String) ?? ""
+                Task { @MainActor in
+                    self?.handlePlayerInfo(title: title, artist: artist, state: state, from: player)
+                }
+            }
+        }
+    }
+
+    /// Player launch/termination is a more useful reconciliation point than a
+    /// frequent timer, and lets a newly launched player request permission once.
+    private func observePlayerLifecycle() {
+        let workspace = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {
+            workspace.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
+                guard let application = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                      let bundleIdentifier = application.bundleIdentifier,
+                      let player = PlayerApp(rawValue: bundleIdentifier)
+                else { return }
+
+                Task { @MainActor in
+                    guard let self else { return }
+                    self.music.clearPermissionFailures(for: player)
+                    if name == NSWorkspace.didLaunchApplicationNotification {
+                        self.prepareAutomationPermissions(for: [player])
+                        try? await Task.sleep(for: .milliseconds(500))
+                    }
+                    guard !Task.isCancelled else { return }
+                    await self.refresh()
+                }
             }
         }
     }
@@ -87,13 +133,25 @@ final class StatusItemController: NSObject {
         distributed.addObserver(self, selector: #selector(screenBecameActive), name: Notification.Name("com.apple.screenIsUnlocked"), object: nil)
     }
 
+    private func observeWaveformSetting() {
+        settingsCancellable = AppSettings.shared.$showEqualizer
+            .removeDuplicates()
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in self?.updateWaveformCapture() }
+            }
+    }
+
     @objc nonisolated private func screenBecameInactive() {
-        Task { @MainActor in self.model.screenActive = false }
+        Task { @MainActor in
+            self.model.screenActive = false
+            self.updateWaveformCapture()
+        }
     }
 
     @objc nonisolated private func screenBecameActive() {
         Task { @MainActor in
             self.model.screenActive = true
+            self.music.clearPermissionFailures()
             // Catch up on anything missed while refreshes were paused.
             await self.refresh()
         }
@@ -102,26 +160,45 @@ final class StatusItemController: NSObject {
     // MARK: - Automation permission (first run)
 
     private static let automationExplainedKey = "didExplainAutomation"
+    private static let automationPromptedPrefix = "didRequestAutomation."
     private static let errNotPermitted: OSStatus = -1743
     private static let errWouldRequireConsent: OSStatus = -1744
 
     private func runFirstLaunchPermissionFlow() {
-        let defaults = UserDefaults.standard
-        guard !defaults.bool(forKey: Self.automationExplainedKey) else { return }
-        // Permission can only be checked against a running app; retry next launch.
-        guard PlayerApp.appleMusic.isRunning else { return }
-        defaults.set(true, forKey: Self.automationExplainedKey)
+        prepareAutomationPermissions(for: PlayerApp.allCases.filter(\.isRunning))
+    }
 
-        switch automationPermission(for: PlayerApp.appleMusic.rawValue, askIfNeeded: false) {
-        case Self.errWouldRequireConsent:
+    /// TCC grants Automation per controlled application. Explain once, then
+    /// request each player only the first time that player is encountered.
+    private func prepareAutomationPermissions(for players: [PlayerApp]) {
+        let defaults = UserDefaults.standard
+        let unprompted = players.filter {
+            !defaults.bool(forKey: Self.automationPromptedPrefix + $0.rawValue)
+        }
+        guard !unprompted.isEmpty else { return }
+
+        let statuses = Dictionary(uniqueKeysWithValues: unprompted.map {
+            ($0, automationPermission(for: $0.rawValue, askIfNeeded: false))
+        })
+
+        if statuses.values.contains(Self.errWouldRequireConsent),
+           !defaults.bool(forKey: Self.automationExplainedKey) {
             showPermissionExplainer()
-            if automationPermission(for: PlayerApp.appleMusic.rawValue, askIfNeeded: true) == Self.errNotPermitted {
-                showPermissionDeniedAlert()
-            }
-        case Self.errNotPermitted:
+            defaults.set(true, forKey: Self.automationExplainedKey)
+        }
+
+        var permissionDenied = false
+        for player in unprompted {
+            let status = statuses[player] ?? noErr
+            let finalStatus = status == Self.errWouldRequireConsent
+                ? automationPermission(for: player.rawValue, askIfNeeded: true)
+                : status
+            permissionDenied = permissionDenied || finalStatus == Self.errNotPermitted
+            defaults.set(true, forKey: Self.automationPromptedPrefix + player.rawValue)
+        }
+
+        if permissionDenied {
             showPermissionDeniedAlert()
-        default:
-            break
         }
     }
 
@@ -162,13 +239,12 @@ final class StatusItemController: NSObject {
 
     // MARK: - State
 
-    private func handlePlayerInfo(_ userInfo: [AnyHashable: Any]?, from player: PlayerApp) {
+    private func handlePlayerInfo(title: String, artist: String, state: String, from player: PlayerApp) {
         // The notification carries the fresh state; a pending post-command
         // reconcile would only re-fetch the same thing.
         pendingReconcile?.cancel()
         pendingReconcile = nil
 
-        let state = (userInfo?["Player State"] as? String) ?? "Stopped"
         if state == "Stopped" {
             // Another player might still be active; re-scan.
             if player == music.activePlayer { Task { await refresh() } }
@@ -176,10 +252,11 @@ final class StatusItemController: NSObject {
         }
         music.activePlayer = player
         model.update(
-            title: (userInfo?["Name"] as? String) ?? "",
-            artist: (userInfo?["Artist"] as? String) ?? "",
+            title: title,
+            artist: artist,
             isPlaying: state == "Playing"
         )
+        updateWaveformCapture()
         refreshArtworkIfNeeded()
         updateAccessibility()
     }
@@ -187,17 +264,32 @@ final class StatusItemController: NSObject {
     private func refresh() async {
         // Coalesce: a refresh already in flight will land the same state.
         guard !isRefreshing else { return }
+        let signpost = PerformanceSignposts.begin("Player Refresh")
+        defer { PerformanceSignposts.end("Player Refresh", signpost) }
         isRefreshing = true
         defer { isRefreshing = false }
 
         if let nowPlaying = await music.fetchNowPlaying() {
             model.update(title: nowPlaying.title, artist: nowPlaying.artist, isPlaying: nowPlaying.isPlaying)
+            updateWaveformCapture()
             refreshArtworkIfNeeded()
         } else {
+            waveformCapture.capture(nil)
+            cancelArtworkWork()
             model.clear()
             lastArtworkKey = nil
         }
         updateAccessibility()
+    }
+
+    /// Keep the system-audio tap alive only while its pixels are visible and
+    /// moving. Pausing, hiding the equalizer, or locking the screen tears down
+    /// the aggregate device and its realtime callback.
+    private func updateWaveformCapture() {
+        let shouldCapture = AppSettings.shared.showEqualizer
+            && model.isPlaying
+            && model.screenActive
+        waveformCapture.capture(shouldCapture ? music.activePlayer : nil)
     }
 
     /// Fetch cover art only when the track actually changed — playerInfo
@@ -205,16 +297,55 @@ final class StatusItemController: NSObject {
     private func refreshArtworkIfNeeded() {
         let key = "\(music.activePlayer.rawValue)|\(model.title)|\(model.artist)"
         guard key != lastArtworkKey else { return }
+        artworkTask?.cancel()
+        largeArtworkTask?.cancel()
+        artworkTask = nil
+        largeArtworkTask = nil
+        artworkSourceData = nil
+        model.artwork = nil
+        model.artworkLarge = nil
         lastArtworkKey = key
-        Task { @MainActor [weak self] in
+        let title = model.title
+        let artist = model.artist
+        artworkTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            let artwork = await self.music.fetchArtwork(title: self.model.title, artist: self.model.artist)
+            let artwork = await self.music.fetchArtwork(title: title, artist: artist)
+            guard !Task.isCancelled else { return }
             // The track may have changed while the artwork was loading.
             if self.lastArtworkKey == key {
                 self.model.artwork = artwork?.thumbnail
-                self.model.artworkLarge = artwork?.full
+                self.artworkSourceData = artwork?.encodedData
+                // A transient failure may retry on the next reconciliation.
+                if artwork == nil { self.lastArtworkKey = nil }
             }
         }
+    }
+
+    private func loadLargeArtworkIfNeeded() {
+        guard model.artworkLarge == nil,
+              largeArtworkTask == nil,
+              let data = artworkSourceData,
+              let key = lastArtworkKey
+        else { return }
+
+        largeArtworkTask = Task { @MainActor [weak self] in
+            let image = await MusicController.decodeArtwork(from: data, maxPixelSize: 512)
+            guard let self else { return }
+            defer {
+                if self.lastArtworkKey == key { self.largeArtworkTask = nil }
+            }
+            guard !Task.isCancelled, self.lastArtworkKey == key else { return }
+            self.model.artworkLarge = image
+            self.artworkSourceData = nil
+        }
+    }
+
+    private func cancelArtworkWork() {
+        artworkTask?.cancel()
+        artworkTask = nil
+        largeArtworkTask?.cancel()
+        largeArtworkTask = nil
+        artworkSourceData = nil
     }
 
     private func updateAccessibility() {

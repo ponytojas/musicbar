@@ -56,11 +56,11 @@ struct SettingsView: View {
                         Text("Right of title").tag(EqualizerPosition.right)
                     }
                     Picker("Color", selection: $settings.equalizerColorMode) {
-                        Text("Default").tag(EqualizerColorMode.system)
-                        Text("Single color").tag(EqualizerColorMode.custom)
-                        Text("Rainbow").tag(EqualizerColorMode.rainbow)
+                        Text("Gradient").tag(EqualizerColorMode.gradient)
+                        Text("Fixed color").tag(EqualizerColorMode.fixed)
+                        Text("Random colors").tag(EqualizerColorMode.random)
                     }
-                    if settings.equalizerColorMode == .custom {
+                    if settings.equalizerColorMode == .fixed {
                         ColorPicker("Custom color", selection: Binding(
                             get: { settings.equalizerColor },
                             set: { settings.equalizerColor = $0 }

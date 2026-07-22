@@ -9,9 +9,9 @@
 "Left of title" = "A la izquierda del título";
 "Right of title" = "A la derecha del título";
 "Color" = "Color";
-"Default" = "Por defecto";
-"Single color" = "Color único";
-"Rainbow" = "Arcoíris";
+"Gradient" = "Degradado";
+"Fixed color" = "Color fijo";
+"Random colors" = "Colores aleatorios";
 "Custom color" = "Color personalizado";
 "Title width" = "Ancho del título";
 "Auto-scroll after" = "Desplazar tras";

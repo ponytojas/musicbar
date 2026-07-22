@@ -5,13 +5,25 @@ enum EqualizerPosition: String, CaseIterable {
 }
 
 enum EqualizerColorMode: String, CaseIterable {
-    case system   // menu bar's default monochrome
-    case custom   // single user-picked color
-    case rainbow  // animated hue cycle
+    case gradient
+    case fixed
+    case random
+
+    /// Preserve preferences written by versions that called these modes
+    /// system/custom/rainbow.
+    init(storedValue: String) {
+        switch storedValue {
+        case "system": self = .gradient
+        case "custom": self = .fixed
+        case "rainbow": self = .random
+        default: self = Self(rawValue: storedValue) ?? .gradient
+        }
+    }
 }
 
 /// User preferences, persisted in UserDefaults. Shared by the menu bar view
 /// and the settings window.
+@MainActor
 final class AppSettings: ObservableObject {
     static let shared = AppSettings()
 
@@ -54,7 +66,7 @@ final class AppSettings: ObservableObject {
             "textWidth": 150.0,
             "holdSeconds": 10,
             "equalizerPosition": EqualizerPosition.left.rawValue,
-            "equalizerColorMode": EqualizerColorMode.system.rawValue,
+            "equalizerColorMode": EqualizerColorMode.gradient.rawValue,
             "equalizerColorHex": "#FF375F",
         ])
         showArtwork = defaults.bool(forKey: "showArtwork")
@@ -63,7 +75,9 @@ final class AppSettings: ObservableObject {
         textWidth = defaults.double(forKey: "textWidth")
         holdSeconds = defaults.integer(forKey: "holdSeconds")
         equalizerPosition = EqualizerPosition(rawValue: defaults.string(forKey: "equalizerPosition") ?? "") ?? .left
-        equalizerColorMode = EqualizerColorMode(rawValue: defaults.string(forKey: "equalizerColorMode") ?? "") ?? .system
+        equalizerColorMode = EqualizerColorMode(
+            storedValue: defaults.string(forKey: "equalizerColorMode") ?? ""
+        )
         equalizerColorHex = defaults.string(forKey: "equalizerColorHex") ?? "#FF375F"
     }
 }

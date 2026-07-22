@@ -9,9 +9,9 @@
 "Left of title" = "Left of title";
 "Right of title" = "Right of title";
 "Color" = "Color";
-"Default" = "Default";
-"Single color" = "Single color";
-"Rainbow" = "Rainbow";
+"Gradient" = "Gradient";
+"Fixed color" = "Fixed color";
+"Random colors" = "Random colors";
 "Custom color" = "Custom color";
 "Title width" = "Title width";
 "Auto-scroll after" = "Auto-scroll after";

@@ -24,7 +24,9 @@
         <string>14.0</string>
         <key>LSUIElement</key>
         <true />
-        <key>NSAppleEventsUsageDescription</key>
-        <string>MusicBar controls the Music app to show and toggle the current track.</string>
-    </dict>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>MusicBar controls Apple Music and Spotify to show and manage the current track.</string>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>MusicBar analyzes audio from Apple Music and Spotify to display a live waveform. Audio is never recorded or saved.</string>
+</dict>
 </plist>

@@ -8,9 +8,12 @@ final class HoverPopupController {
     private var panel: NSPanel?
     private var showTask: Task<Void, Never>?
     private let model: TrackModel
+    private let onWillShow: () -> Void
+    private lazy var hostingView = NSHostingView(rootView: HoverPopupView(model: model))
 
-    init(model: TrackModel) {
+    init(model: TrackModel, onWillShow: @escaping () -> Void = {}) {
         self.model = model
+        self.onWillShow = onWillShow
     }
 
     /// Called from the status item's hover tracking. A short delay before
@@ -34,14 +37,14 @@ final class HoverPopupController {
 
     private func show(relativeTo button: NSStatusBarButton?) {
         guard let button, let buttonWindow = button.window else { return }
+        onWillShow()
 
         let panel = self.panel ?? makePanel()
         self.panel = panel
 
-        let hosting = NSHostingView(rootView: HoverPopupView(model: model))
-        hosting.frame.size = hosting.fittingSize
-        panel.contentView = hosting
-        panel.setContentSize(hosting.fittingSize)
+        let fittingSize = hostingView.fittingSize
+        hostingView.frame.size = fittingSize
+        panel.setContentSize(fittingSize)
 
         // Centered under the status item, just below the menu bar.
         let buttonFrame = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
@@ -85,6 +88,7 @@ final class HoverPopupController {
         panel.ignoresMouseEvents = true
         panel.hidesOnDeactivate = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.contentView = hostingView
         return panel
     }
 }
@@ -128,7 +132,7 @@ struct HoverPopupView: View {
         .background {
             ZStack {
                 // Blurred cover tints the card with the album's own colors.
-                if let artwork = coverImage {
+                if let artwork = model.artwork {
                     Image(nsImage: artwork)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
