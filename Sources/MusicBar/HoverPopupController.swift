@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 /// Floating panel shown under the status item while the mouse hovers it:
@@ -10,10 +11,19 @@ final class HoverPopupController {
     private let model: TrackModel
     private let onWillShow: () -> Void
     private lazy var hostingView = NSHostingView(rootView: HoverPopupView(model: model))
+    private weak var anchorButton: NSStatusBarButton?
+    private var modelCancellable: AnyCancellable?
 
     init(model: TrackModel, onWillShow: @escaping () -> Void = {}) {
         self.model = model
         self.onWillShow = onWillShow
+        // objectWillChange fires before the new value lands; hop a run loop
+        // turn so the relayout measures the updated content.
+        modelCancellable = model.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                MainActor.assumeIsolated { self?.relayoutIfVisible() }
+            }
     }
 
     /// Called from the status item's hover tracking. A short delay before
@@ -36,12 +46,36 @@ final class HoverPopupController {
     }
 
     private func show(relativeTo button: NSStatusBarButton?) {
-        guard let button, let buttonWindow = button.window else { return }
+        guard let button, button.window != nil else { return }
         onWillShow()
+        anchorButton = button
 
         let panel = self.panel ?? makePanel()
         self.panel = panel
 
+        // Gentle fade + downward drift in.
+        guard let origin = layout(panel, under: button), !panel.isVisible else { return }
+        panel.alphaValue = 0
+        panel.setFrameOrigin(NSPoint(x: origin.x, y: origin.y + 6))
+        panel.orderFrontRegardless()
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.22
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            panel.animator().alphaValue = 1
+            panel.animator().setFrameOrigin(origin)
+        }
+    }
+
+    private func relayoutIfVisible() {
+        guard let panel, panel.isVisible, let anchorButton else { return }
+        guard model.hasTrack else { return hide() }
+        layout(panel, under: anchorButton)
+    }
+
+    /// Sizes the panel to its content and places it under the status item.
+    @discardableResult
+    private func layout(_ panel: NSPanel, under button: NSStatusBarButton) -> NSPoint? {
+        guard let buttonWindow = button.window else { return nil }
         let fittingSize = hostingView.fittingSize
         hostingView.frame.size = fittingSize
         panel.setContentSize(fittingSize)
@@ -56,18 +90,7 @@ final class HoverPopupController {
             origin.x = min(max(origin.x, screen.visibleFrame.minX + 4), screen.visibleFrame.maxX - panel.frame.width - 4)
         }
         panel.setFrameOrigin(origin)
-
-        // Gentle fade + downward drift in.
-        guard !panel.isVisible else { return }
-        panel.alphaValue = 0
-        panel.setFrameOrigin(NSPoint(x: origin.x, y: origin.y + 6))
-        panel.orderFrontRegardless()
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.22
-            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            panel.animator().alphaValue = 1
-            panel.animator().setFrameOrigin(origin)
-        }
+        return origin
     }
 
     private func hide() {
