@@ -58,6 +58,8 @@ final class StatusItemController: NSObject {
     private var sleepTimerTask: Task<Void, Never>?
     private var sleepTimerEnd: Date?
     private var sleepTimerMinutes = 0
+    private var recentTracks = StatusItemController.loadRecentTracks()
+    private static let recentTracksKey = "recentTracks"
     private var isRefreshing = false
     /// Post-command reconcile; cancelled when the player's own notification
     /// arrives first so we don't fetch the same state twice.
@@ -382,6 +384,7 @@ final class StatusItemController: NSObject {
         model.artworkLarge = nil
         model.isFavorited = nil
         lastArtworkKey = key
+        if model.hasTrack { recordRecentTrack() }
         let title = model.title
         let artist = model.artist
         artworkTask = Task { @MainActor [weak self] in
@@ -404,6 +407,18 @@ final class StatusItemController: NSObject {
             self.model.artwork = artwork?.thumbnail
             // A transient failure may retry on the next reconciliation.
             if artwork == nil { self.lastArtworkKey = nil }
+        }
+    }
+
+    private static func loadRecentTracks() -> [RecentTrack] {
+        guard let data = UserDefaults.standard.data(forKey: recentTracksKey) else { return [] }
+        return (try? JSONDecoder().decode([RecentTrack].self, from: data)) ?? []
+    }
+
+    private func recordRecentTrack() {
+        recentTracks = RecentTrack.adding(RecentTrack(title: model.title, artist: model.artist), to: recentTracks)
+        if let data = try? JSONEncoder().encode(recentTracks) {
+            UserDefaults.standard.set(data, forKey: Self.recentTracksKey)
         }
     }
 
@@ -672,6 +687,21 @@ final class StatusItemController: NSObject {
             linkItem.target = self
             menu.addItem(linkItem)
         }
+        // The current song is already in the menu bar.
+        let current = RecentTrack(title: model.title, artist: model.artist)
+        let history = recentTracks.filter { $0 != current }
+        if !history.isEmpty {
+            let recentItem = NSMenuItem(title: NSLocalizedString("Recently Played", comment: ""), action: nil, keyEquivalent: "")
+            let submenu = NSMenu()
+            for track in history {
+                let item = NSMenuItem(title: track.displayText, action: #selector(copyRecentTrack(_:)), keyEquivalent: "")
+                item.target = self
+                item.toolTip = NSLocalizedString("Copy title and artist", comment: "")
+                submenu.addItem(item)
+            }
+            recentItem.submenu = submenu
+            menu.addItem(recentItem)
+        }
         menu.addItem(.separator())
         menu.addItem(sleepTimerMenuItem())
         menu.addItem(.separator())
@@ -733,6 +763,11 @@ final class StatusItemController: NSObject {
             self.sleepTimerEnd = nil
             self.sleepTimerMinutes = 0
         }
+    }
+
+    @objc private func copyRecentTrack(_ sender: NSMenuItem) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(sender.title, forType: .string)
     }
 
     @objc private func showInMusic() {

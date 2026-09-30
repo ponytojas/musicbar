@@ -24,6 +24,20 @@ struct OutputDevice: Identifiable, Equatable {
     var isSelected: Bool
 }
 
+struct RecentTrack: Codable, Equatable {
+    let title: String
+    let artist: String
+
+    var displayText: String { artist.isEmpty ? title : "\(title) — \(artist)" }
+
+    static let limit = 10
+
+    /// Newest first, without duplicates, capped at `limit`.
+    static func adding(_ track: RecentTrack, to history: [RecentTrack]) -> [RecentTrack] {
+        Array(([track] + history.filter { $0 != track }).prefix(limit))
+    }
+}
+
 struct Playlist: Identifiable, Equatable {
     let id: String
     let name: String

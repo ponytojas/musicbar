@@ -113,6 +113,19 @@ final class MusicBarTests: XCTestCase {
         ])
     }
 
+    func testRecentTracksAreNewestFirstUniqueAndCapped() {
+        var history: [RecentTrack] = []
+        for index in 0..<12 {
+            history = RecentTrack.adding(RecentTrack(title: "Song \(index)", artist: "A"), to: history)
+        }
+        XCTAssertEqual(history.count, RecentTrack.limit)
+        XCTAssertEqual(history.first?.title, "Song 11")
+
+        history = RecentTrack.adding(RecentTrack(title: "Song 5", artist: "A"), to: history)
+        XCTAssertEqual(history.first?.title, "Song 5")
+        XCTAssertEqual(history.filter { $0.title == "Song 5" }.count, 1)
+    }
+
     func testHexColorRoundTrip() {
         XCTAssertEqual(Color(hex: "#FF375F").hexString, "#FF375F")
         XCTAssertEqual(Color(hex: "0A0B0C").hexString, "#0A0B0C")

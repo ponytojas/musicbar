@@ -102,3 +102,7 @@
 
 /* Show in Music */
 "Show in Music" = "Mostrar en Música";
+
+/* Recently played */
+"Recently Played" = "Reproducidas recientemente";
+"Copy title and artist" = "Copiar título y artista";
