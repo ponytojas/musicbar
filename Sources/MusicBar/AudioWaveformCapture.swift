@@ -100,21 +100,37 @@ final class AudioWaveformCapture: @unchecked Sendable {
     ) {
         self.onLevels = onLevels
         self.onStopped = onStopped
+
+        // The aggregate device is bound to the output device present at start;
+        // rebuild it when the user switches output (AirPods, unplugging, …).
+        // App-lifetime object, so the listener is never removed.
+        var address = Self.defaultOutputDeviceAddress
+        AudioObjectAddPropertyListenerBlock(
+            AudioObjectID(kAudioObjectSystemObject),
+            &address,
+            setupQueue
+        ) { [weak self] _, _ in
+            guard let self, let player = self.capturedPlayer else { return }
+            self.switchOnSetupQueue(to: player)
+        }
     }
 
     func capture(_ player: PlayerApp?) {
         setupQueue.async { [weak self] in
-            guard let self else { return }
-            guard player != self.capturedPlayer else { return }
-            self.stopOnSetupQueue()
-            guard let player else { return }
-            do {
-                try self.startOnSetupQueue(player)
-                self.capturedPlayer = player
-            } catch {
-                NSLog("Waveform capture unavailable: \(error)")
-                self.stopOnSetupQueue()
-            }
+            guard let self, player != self.capturedPlayer else { return }
+            self.switchOnSetupQueue(to: player)
+        }
+    }
+
+    private func switchOnSetupQueue(to player: PlayerApp?) {
+        stopOnSetupQueue()
+        guard let player else { return }
+        do {
+            try startOnSetupQueue(player)
+            capturedPlayer = player
+        } catch {
+            NSLog("Waveform capture unavailable: \(error)")
+            stopOnSetupQueue()
         }
     }
 
@@ -313,14 +329,16 @@ final class AudioWaveformCapture: @unchecked Sendable {
         }
     }
 
+    private static let defaultOutputDeviceAddress = AudioObjectPropertyAddress(
+        mSelector: kAudioHardwarePropertyDefaultSystemOutputDevice,
+        mScope: kAudioObjectPropertyScopeGlobal,
+        mElement: kAudioObjectPropertyElementMain
+    )
+
     private static func defaultOutputDevice() throws -> AudioObjectID {
         var device = AudioObjectID(kAudioObjectUnknown)
         var size = UInt32(MemoryLayout<AudioObjectID>.size)
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwarePropertyDefaultSystemOutputDevice,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
+        var address = defaultOutputDeviceAddress
         try check(
             AudioObjectGetPropertyData(
                 AudioObjectID(kAudioObjectSystemObject),
