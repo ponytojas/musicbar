@@ -214,7 +214,7 @@ struct HoverPopupView: View {
             VStack(spacing: 3) {
                 Text(model.title)
                     .font(.system(size: 13, weight: .semibold))
-                    .lineLimit(2)
+                    .lineLimit(1)
                 if !model.artist.isEmpty {
                     Text(model.artist)
                         .font(.system(size: 11, weight: .medium))
