@@ -81,6 +81,15 @@ final class MusicBarTests: XCTestCase {
         XCTAssertNil(MusicController.parseNowPlaying("Song\nArtist"))
     }
 
+    func testSpotifyWebURL() {
+        XCTAssertEqual(
+            MusicController.spotifyWebURL(fromURI: "spotify:track:4uLU6hMCjMI75M1A2tKUQC")?.absoluteString,
+            "https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC"
+        )
+        XCTAssertNil(MusicController.spotifyWebURL(fromURI: "spotify:local:Artist:Album:Song:215"))
+        XCTAssertNil(MusicController.spotifyWebURL(fromURI: ""))
+    }
+
     func testHexColorRoundTrip() {
         XCTAssertEqual(Color(hex: "#FF375F").hexString, "#FF375F")
         XCTAssertEqual(Color(hex: "0A0B0C").hexString, "#0A0B0C")

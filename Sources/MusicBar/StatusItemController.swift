@@ -488,6 +488,11 @@ final class StatusItemController: NSObject {
             favoriteItem.target = self
             menu.addItem(favoriteItem)
         }
+        if model.hasTrack, music.activePlayer == .spotify {
+            let linkItem = NSMenuItem(title: NSLocalizedString("Copy Song Link", comment: ""), action: #selector(copySongLink), keyEquivalent: "")
+            linkItem.target = self
+            menu.addItem(linkItem)
+        }
         menu.addItem(.separator())
         let settingsItem = NSMenuItem(title: NSLocalizedString("Settings…", comment: ""), action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
@@ -508,6 +513,14 @@ final class StatusItemController: NSObject {
 
     @objc private func favoriteSong() {
         music.favoriteCurrentTrack()
+    }
+
+    @objc private func copySongLink() {
+        Task {
+            guard let url = await music.spotifyTrackLink() else { return }
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(url.absoluteString, forType: .string)
+        }
     }
 
     @objc private func openPlayer() {

@@ -47,3 +47,4 @@
 
 /* Context menu actions */
 "Favorite Song" = "Marcar como favorita";
+"Copy Song Link" = "Copiar enlace de la canción";

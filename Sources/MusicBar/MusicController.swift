@@ -185,6 +185,22 @@ final class MusicController {
         }
     }
 
+    /// Web link to Spotify's current track; Music exposes no shareable URL.
+    func spotifyTrackLink() async -> URL? {
+        guard activePlayer == .spotify, PlayerApp.spotify.isRunning else { return nil }
+        let response = await scriptRunner.runString("tell application \"Spotify\" to return spotify url of current track")
+        recordPermissionFailure(response.errorNumber, for: .spotify)
+        return response.value.flatMap(Self.spotifyWebURL(fromURI:))
+    }
+
+    /// "spotify:track:ID" → https://open.spotify.com/track/ID. Local files
+    /// ("spotify:local:…") have no web page and return nil.
+    static func spotifyWebURL(fromURI uri: String) -> URL? {
+        let parts = uri.split(separator: ":")
+        guard parts.count == 3, parts[0] == "spotify", parts[1] != "local" else { return nil }
+        return URL(string: "https://open.spotify.com/\(parts[1])/\(parts[2])")
+    }
+
     func openPlayerApp() {
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: activePlayer.rawValue) else { return }
         NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
