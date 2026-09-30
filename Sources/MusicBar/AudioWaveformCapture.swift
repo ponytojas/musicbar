@@ -2,6 +2,7 @@ import AppKit
 import AudioToolbox
 import AVFoundation
 import CoreAudio
+import os
 
 private let waveformBarCount = 7
 
@@ -129,7 +130,7 @@ final class AudioWaveformCapture: @unchecked Sendable {
             try startOnSetupQueue(player)
             capturedPlayer = player
         } catch {
-            NSLog("Waveform capture unavailable: \(error)")
+            Logger.musicBar.error("Waveform capture unavailable: \(error.localizedDescription, privacy: .public)")
             stopOnSetupQueue()
         }
     }

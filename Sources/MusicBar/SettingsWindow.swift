@@ -1,4 +1,5 @@
 import AppKit
+import os
 import ServiceManagement
 import SwiftUI
 
@@ -120,7 +121,7 @@ struct SettingsView: View {
                 try SMAppService.mainApp.unregister()
             }
         } catch {
-            NSLog("Launch at login change failed: \(error)")
+            Logger.musicBar.error("Launch at login change failed: \(error.localizedDescription, privacy: .public)")
             launchAtLogin = [.enabled, .requiresApproval].contains(SMAppService.mainApp.status)
         }
         loginItemStatus = SMAppService.mainApp.status

@@ -1,5 +1,6 @@
 import AppKit
 import ImageIO
+import os
 
 enum PlayerApp: String, CaseIterable, Sendable {
     case appleMusic = "com.apple.Music"
@@ -94,7 +95,7 @@ private final class ScriptRunner: @unchecked Sendable {
             script = cached
         } else {
             guard let fresh = NSAppleScript(source: source), fresh.compileAndReturnError(&error) else {
-                NSLog("AppleScript compile error: \(error ?? [:])")
+                Logger.musicBar.error("AppleScript compile error: \(String(describing: error))")
                 return (nil, Self.errorNumber(in: error))
             }
             compiledScripts[source] = fresh
@@ -102,7 +103,7 @@ private final class ScriptRunner: @unchecked Sendable {
         }
         let result = script.executeAndReturnError(&error)
         if let error {
-            NSLog("AppleScript error: \(error)")
+            Logger.musicBar.error("AppleScript error: \(error)")
         }
         return (result, Self.errorNumber(in: error))
     }
