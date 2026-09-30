@@ -4,6 +4,19 @@ enum EqualizerPosition: String, CaseIterable {
     case left, right
 }
 
+enum PlayerMode: String, CaseIterable {
+    case automatic, appleMusic, spotify
+
+    /// Players MusicBar reads and controls in this mode.
+    var players: [PlayerApp] {
+        switch self {
+        case .automatic: PlayerApp.allCases
+        case .appleMusic: [.appleMusic]
+        case .spotify: [.spotify]
+        }
+    }
+}
+
 enum EqualizerColorMode: String, CaseIterable {
     case gradient
     case fixed
@@ -27,6 +40,9 @@ enum EqualizerColorMode: String, CaseIterable {
 final class AppSettings: ObservableObject {
     static let shared = AppSettings()
 
+    @Published var playerMode: PlayerMode {
+        didSet { UserDefaults.standard.set(playerMode.rawValue, forKey: "playerMode") }
+    }
     @Published var showArtwork: Bool {
         didSet { UserDefaults.standard.set(showArtwork, forKey: "showArtwork") }
     }
@@ -60,6 +76,7 @@ final class AppSettings: ObservableObject {
     private init() {
         let defaults = UserDefaults.standard
         defaults.register(defaults: [
+            "playerMode": PlayerMode.automatic.rawValue,
             "showArtwork": true,
             "showEqualizer": true,
             "showArtist": true,
@@ -69,6 +86,7 @@ final class AppSettings: ObservableObject {
             "equalizerColorMode": EqualizerColorMode.gradient.rawValue,
             "equalizerColorHex": "#FF375F",
         ])
+        playerMode = PlayerMode(rawValue: defaults.string(forKey: "playerMode") ?? "") ?? .automatic
         showArtwork = defaults.bool(forKey: "showArtwork")
         showEqualizer = defaults.bool(forKey: "showEqualizer")
         showArtist = defaults.bool(forKey: "showArtist")

@@ -35,7 +35,7 @@ final class StatusItemController: NSObject {
     /// Post-command reconcile; cancelled when the player's own notification
     /// arrives first so we don't fetch the same state twice.
     private var pendingReconcile: Task<Void, Never>?
-    private var settingsCancellable: AnyCancellable?
+    private var settingsCancellables: Set<AnyCancellable> = []
 
     override init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -139,11 +139,19 @@ final class StatusItemController: NSObject {
     }
 
     private func observeWaveformSetting() {
-        settingsCancellable = AppSettings.shared.$showEqualizer
+        AppSettings.shared.$showEqualizer
             .removeDuplicates()
             .sink { [weak self] _ in
                 Task { @MainActor [weak self] in self?.updateWaveformCapture() }
             }
+            .store(in: &settingsCancellables)
+        AppSettings.shared.$playerMode
+            .dropFirst()
+            .removeDuplicates()
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in await self?.refresh() }
+            }
+            .store(in: &settingsCancellables)
         NSWorkspace.shared.notificationCenter.addObserver(
             self,
             selector: #selector(accessibilityDisplayOptionsChanged),
@@ -255,6 +263,7 @@ final class StatusItemController: NSObject {
     // MARK: - State
 
     private func handlePlayerInfo(title: String, artist: String, state: String, from player: PlayerApp) {
+        guard AppSettings.shared.playerMode.players.contains(player) else { return }
         // The notification carries the fresh state; a pending post-command
         // reconcile would only re-fetch the same thing.
         pendingReconcile?.cancel()

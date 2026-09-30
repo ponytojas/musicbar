@@ -57,6 +57,11 @@ struct SettingsView: View {
             }
 
             Section("Menu Bar") {
+                Picker("Player", selection: $settings.playerMode) {
+                    Text("Automatic").tag(PlayerMode.automatic)
+                    Text(verbatim: "Apple Music").tag(PlayerMode.appleMusic)
+                    Text(verbatim: "Spotify").tag(PlayerMode.spotify)
+                }
                 Toggle("Show album artwork", isOn: $settings.showArtwork)
                 Toggle("Show artist name", isOn: $settings.showArtist)
             }

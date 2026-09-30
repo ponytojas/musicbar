@@ -48,3 +48,7 @@
 /* Context menu actions */
 "Favorite Song" = "Favorite Song";
 "Copy Song Link" = "Copy Song Link";
+
+/* Player mode */
+"Player" = "Player";
+"Automatic" = "Automatic";

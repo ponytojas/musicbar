@@ -209,6 +209,10 @@ final class MusicController {
     /// Checks the active player first, then prefers whichever player is
     /// actually playing. Returns nil when neither has a track.
     func fetchNowPlaying() async -> NowPlaying? {
+        let allowedPlayers = AppSettings.shared.playerMode.players
+        if !allowedPlayers.contains(activePlayer), let first = allowedPlayers.first {
+            activePlayer = first
+        }
         let currentPlayer = activePlayer
         var candidates: [Candidate] = []
 
@@ -218,7 +222,7 @@ final class MusicController {
             candidates.append(candidate)
         }
 
-        for player in PlayerApp.allCases where player != currentPlayer {
+        for player in allowedPlayers where player != currentPlayer {
             if let nowPlaying = await fetchNowPlaying(from: player) {
                 candidates.append(Candidate(player: player, nowPlaying: nowPlaying))
             }
