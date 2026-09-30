@@ -1,3 +1,4 @@
+import SwiftUI
 import XCTest
 @testable import MusicBar
 
@@ -66,6 +67,23 @@ final class MusicBarTests: XCTestCase {
         XCTAssertGreaterThan(output[2] - output[0], input[2] - input[0])
         XCTAssertTrue(output.allSatisfy { (0...1).contains($0) })
         XCTAssertEqual(WaveformMath.displayLevels(from: [0, 0]), [0, 0])
+    }
+
+    func testNowPlayingParsing() {
+        XCTAssertEqual(
+            MusicController.parseNowPlaying("Song\nArtist\nplaying"),
+            .init(title: "Song", artist: "Artist", isPlaying: true)
+        )
+        XCTAssertEqual(
+            MusicController.parseNowPlaying("Two\nLines\n\npaused"),
+            .init(title: "Two\nLines", artist: "", isPlaying: false)
+        )
+        XCTAssertNil(MusicController.parseNowPlaying("Song\nArtist"))
+    }
+
+    func testHexColorRoundTrip() {
+        XCTAssertEqual(Color(hex: "#FF375F").hexString, "#FF375F")
+        XCTAssertEqual(Color(hex: "0A0B0C").hexString, "#0A0B0C")
     }
 
     func testSearchResultMustMatchArtist() {

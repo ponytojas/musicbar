@@ -210,12 +210,20 @@ final class MusicController {
         let response = await scriptRunner.runString(source)
         recordPermissionFailure(response.errorNumber, for: player)
         guard let result = response.value, !result.isEmpty else { return nil }
-        let parts = result.components(separatedBy: "\n")
+        return Self.parseNowPlaying(result)
+    }
+
+    /// Parses "title⏎artist⏎state". Fields are read from the end so a title
+    /// with a line break stays intact.
+    static func parseNowPlaying(_ result: String) -> NowPlaying? {
+        var parts = result.components(separatedBy: "\n")
         guard parts.count >= 3 else { return nil }
+        let state = parts.removeLast()
+        let artist = parts.removeLast()
         return NowPlaying(
-            title: parts[0],
-            artist: parts[1],
-            isPlaying: parts[2].caseInsensitiveCompare("playing") == .orderedSame
+            title: parts.joined(separator: "\n"),
+            artist: artist,
+            isPlaying: state.caseInsensitiveCompare("playing") == .orderedSame
         )
     }
 
