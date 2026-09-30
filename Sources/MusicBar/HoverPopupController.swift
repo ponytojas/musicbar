@@ -11,6 +11,8 @@ struct PopupActions {
     var toggleFavorite: @MainActor () -> Void
     var addToPlaylist: @MainActor (Playlist) -> Void
     var seek: @MainActor (TimeInterval) -> Void
+    var toggleShuffle: @MainActor () -> Void
+    var cycleRepeat: @MainActor () -> Void
 }
 
 /// Floating "now playing" card shown under the status item while the mouse
@@ -236,10 +238,13 @@ struct HoverPopupView: View {
             ProgressRow(progress: model.progress, isPlaying: model.isPlaying, notice: model.popupNotice, onSeek: actions.seek)
                 .frame(width: coverSize)
 
-            ControlsRow(model: model, actions: actions)
-                .frame(width: coverSize)
-                // Pointer-only card: a clicked button shouldn't keep a focus ring.
-                .focusEffectDisabled()
+            VStack(spacing: 2) {
+                ControlsRow(model: model, actions: actions)
+                UtilityRow(model: model, actions: actions)
+            }
+            .frame(width: coverSize)
+            // Pointer-only card: a clicked button shouldn't keep a focus ring.
+            .focusEffectDisabled()
         }
         .padding(16)
         .background {
@@ -405,10 +410,45 @@ private struct ControlsRow: View {
     private static var emptySlot: some View { Color.clear.frame(width: 33, height: 30) }
 }
 
+/// Secondary controls under the transport. Always laid out, even before the
+/// modes load, so the card keeps its height.
+private struct UtilityRow: View {
+    @ObservedObject var model: TrackModel
+    let actions: PopupActions
+
+    var body: some View {
+        HStack(spacing: 0) {
+            if let modes = model.playbackModes {
+                ControlButton(
+                    title: "Shuffle",
+                    systemImage: "shuffle",
+                    size: 11,
+                    height: 22,
+                    isOn: modes.shuffle,
+                    action: actions.toggleShuffle
+                )
+                ControlButton(
+                    title: "Repeat",
+                    systemImage: modes.repeatMode == .one ? "repeat.1" : "repeat",
+                    size: 11,
+                    height: 22,
+                    isOn: modes.repeatMode != .off,
+                    action: actions.cycleRepeat
+                )
+            }
+            Spacer(minLength: 0)
+        }
+        .frame(height: 22)
+    }
+}
+
 private struct ControlButton: View {
     let title: LocalizedStringKey
     let systemImage: String
     var size: CGFloat = 13
+    var height: CGFloat = 30
+    /// Toggles tint when on and dim when off; plain buttons leave it nil.
+    var isOn: Bool?
     let action: @MainActor () -> Void
 
     var body: some View {
@@ -416,11 +456,21 @@ private struct ControlButton: View {
             Image(systemName: systemImage)
                 .font(.system(size: size, weight: .semibold))
                 .contentTransition(.symbolEffect(.replace))
-                .frame(width: size + 20, height: 30)
+                .frame(width: size + 20, height: height)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .foregroundStyle(tint)
         .help(Text(title))
         .accessibilityLabel(Text(title))
+        .accessibilityAddTraits(isOn == true ? .isSelected : [])
+    }
+
+    private var tint: AnyShapeStyle {
+        switch isOn {
+        case true?: AnyShapeStyle(.tint)
+        case false?: AnyShapeStyle(.secondary)
+        case nil: AnyShapeStyle(.primary)
+        }
     }
 }

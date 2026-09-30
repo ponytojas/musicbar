@@ -85,3 +85,7 @@
 
 /* Volume feedback */
 "Volume %d%%" = "Volumen %d%%";
+
+/* Hover card playback modes */
+"Shuffle" = "Aleatorio";
+"Repeat" = "Repetir";

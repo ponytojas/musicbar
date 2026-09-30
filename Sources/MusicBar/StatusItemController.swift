@@ -34,7 +34,9 @@ final class StatusItemController: NSObject {
             },
             toggleFavorite: { [weak self] in self?.toggleFavorite() },
             addToPlaylist: { [weak self] playlist in self?.addCurrentTrack(to: playlist) },
-            seek: { [weak self] position in self?.seek(to: position) }
+            seek: { [weak self] position in self?.seek(to: position) },
+            toggleShuffle: { [weak self] in self?.toggleShuffle() },
+            cycleRepeat: { [weak self] in self?.cycleRepeat() }
         )
     ) { [weak self] in
         self?.loadLargeArtworkIfNeeded()
@@ -437,6 +439,10 @@ final class StatusItemController: NSObject {
             guard !Task.isCancelled, self.popupWanted else { return }
             if self.model.isFavorited != favorited { self.model.isFavorited = favorited }
 
+            let modes = await self.music.fetchPlaybackModes()
+            guard !Task.isCancelled, self.popupWanted else { return }
+            if self.model.playbackModes != modes { self.model.playbackModes = modes }
+
             var playlists = self.music.activePlayer == .appleMusic ? self.model.playlists : []
             if includePlaylists { playlists = await self.music.fetchPlaylists() }
             guard !Task.isCancelled, self.popupWanted else { return }
@@ -470,6 +476,25 @@ final class StatusItemController: NSObject {
             guard !Task.isCancelled else { return }
             self?.model.popupNotice = nil
         }
+    }
+
+    private func toggleShuffle() {
+        guard var modes = model.playbackModes else { return }
+        modes.shuffle.toggle()
+        model.playbackModes = modes
+        music.setShuffle(modes.shuffle)
+    }
+
+    /// Off → all → one (Music only) → off.
+    private func cycleRepeat() {
+        guard var modes = model.playbackModes else { return }
+        modes.repeatMode = switch modes.repeatMode {
+        case .off: .all
+        case .all: music.activePlayer == .appleMusic ? .one : .off
+        case .one: .off
+        }
+        model.playbackModes = modes
+        music.setRepeat(modes.repeatMode)
     }
 
     /// Optimistic: moves the bar at once instead of waiting for a reload.

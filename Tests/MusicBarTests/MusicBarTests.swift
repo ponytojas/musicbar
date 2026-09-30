@@ -98,6 +98,13 @@ final class MusicBarTests: XCTestCase {
         ])
     }
 
+    func testPlaybackModesParsing() {
+        XCTAssertEqual(MusicController.parsePlaybackModes("true\tone"), PlaybackModes(shuffle: true, repeatMode: .one))
+        XCTAssertEqual(MusicController.parsePlaybackModes("false\ttrue"), PlaybackModes(shuffle: false, repeatMode: .all))
+        XCTAssertEqual(MusicController.parsePlaybackModes("false\toff"), PlaybackModes(shuffle: false, repeatMode: .off))
+        XCTAssertNil(MusicController.parsePlaybackModes("true"))
+    }
+
     func testHexColorRoundTrip() {
         XCTAssertEqual(Color(hex: "#FF375F").hexString, "#FF375F")
         XCTAssertEqual(Color(hex: "0A0B0C").hexString, "#0A0B0C")

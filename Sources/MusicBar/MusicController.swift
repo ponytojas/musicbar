@@ -153,6 +153,39 @@ final class MusicController {
 
     func seek(to position: TimeInterval) { send("set player position to \(position)") }
 
+    func fetchPlaybackModes() async -> PlaybackModes? {
+        let player = activePlayer
+        guard player.isRunning, !permissionDeniedPlayers.contains(player) else { return nil }
+        let source = player == .appleMusic
+            ? "tell application \"Music\" to return ((shuffle enabled) as text) & tab & ((song repeat) as text)"
+            : "tell application \"Spotify\" to return ((shuffling) as text) & tab & ((repeating) as text)"
+        let response = await scriptRunner.runString(source)
+        recordPermissionFailure(response.errorNumber, for: player)
+        return response.value.flatMap(Self.parsePlaybackModes)
+    }
+
+    /// "shuffle⇥repeat". Music reports repeat as off/one/all, Spotify as a
+    /// boolean.
+    static func parsePlaybackModes(_ text: String) -> PlaybackModes? {
+        let fields = text.split(separator: "\t").map(String.init)
+        guard fields.count == 2 else { return nil }
+        let repeatMode: RepeatMode = switch fields[1] {
+        case "true", "all": .all
+        case "one": .one
+        default: .off
+        }
+        return PlaybackModes(shuffle: fields[0] == "true", repeatMode: repeatMode)
+    }
+
+    func setShuffle(_ enabled: Bool) {
+        send(activePlayer == .appleMusic ? "set shuffle enabled to \(enabled)" : "set shuffling to \(enabled)")
+    }
+
+    /// Spotify only knows repeat on or off; `.one` counts as on there.
+    func setRepeat(_ mode: RepeatMode) {
+        send(activePlayer == .appleMusic ? "set song repeat to \(mode.rawValue)" : "set repeating to \(mode != .off)")
+    }
+
     /// Returns the new volume. Both players clamp `sound volume` to 0...100.
     func changeVolume(by delta: Int) async -> Int? {
         let player = activePlayer

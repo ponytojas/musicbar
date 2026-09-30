@@ -9,6 +9,15 @@ struct PlaybackProgress: Equatable {
     var end: Date { start.addingTimeInterval(duration) }
 }
 
+enum RepeatMode: String {
+    case off, all, one
+}
+
+struct PlaybackModes: Equatable {
+    var shuffle: Bool
+    var repeatMode: RepeatMode
+}
+
 struct Playlist: Identifiable, Equatable {
     let id: String
     let name: String
@@ -28,6 +37,8 @@ final class TrackModel: ObservableObject {
     @Published var isFavorited: Bool?
     /// Apple Music playlists the card can add to; empty for Spotify.
     @Published var playlists: [Playlist] = []
+    /// Shuffle and repeat of the active player; nil until fetched.
+    @Published var playbackModes: PlaybackModes?
     /// Short-lived feedback under the card's controls.
     @Published var popupNotice: String?
     @Published var isHovering: Bool = false
