@@ -1,5 +1,14 @@
 import AppKit
 
+/// Playback position for the hover popup. `start` is when the track would
+/// have begun at normal speed, so SwiftUI can run the clock itself.
+struct PlaybackProgress: Equatable {
+    let position: TimeInterval
+    let duration: TimeInterval
+    let start: Date
+    var end: Date { start.addingTimeInterval(duration) }
+}
+
 @MainActor
 final class TrackModel: ObservableObject {
     @Published var title: String = ""
@@ -8,6 +17,8 @@ final class TrackModel: ObservableObject {
     @Published var artwork: NSImage?
     /// Popup-sized decode of the same cover; `artwork` stays menu-bar small.
     @Published var artworkLarge: NSImage?
+    /// Fetched when the hover popup opens; nil otherwise.
+    @Published var progress: PlaybackProgress?
     @Published var isHovering: Bool = false
     @Published var screenActive: Bool = true
 
@@ -30,5 +41,6 @@ final class TrackModel: ObservableObject {
         update(title: "", artist: "", isPlaying: false)
         if artwork != nil { artwork = nil }
         if artworkLarge != nil { artworkLarge = nil }
+        if progress != nil { progress = nil }
     }
 }

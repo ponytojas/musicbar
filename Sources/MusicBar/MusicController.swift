@@ -229,6 +229,34 @@ final class MusicController {
         )
     }
 
+    /// Position and duration of the current track. Values cross as integer
+    /// milliseconds so the locale's decimal separator doesn't matter.
+    func fetchProgress() async -> PlaybackProgress? {
+        let player = activePlayer
+        guard player.isRunning, !permissionDeniedPlayers.contains(player) else { return nil }
+        // Music reports duration in seconds, Spotify in milliseconds.
+        let durationMilliseconds = player == .spotify
+            ? "duration of current track"
+            : "(duration of current track) * 1000"
+        let source = """
+        tell application "\(player.scriptName)"
+            if player state is stopped then return ""
+            return ((player position * 1000) as integer as text) & linefeed & ((\(durationMilliseconds)) as integer as text)
+        end tell
+        """
+        let response = await scriptRunner.runString(source)
+        recordPermissionFailure(response.errorNumber, for: player)
+        guard let parts = response.value?.components(separatedBy: "\n"),
+              parts.count == 2,
+              let positionMilliseconds = Double(parts[0]),
+              let durationMilliseconds = Double(parts[1]),
+              durationMilliseconds > 0
+        else { return nil }
+        let duration = durationMilliseconds / 1000
+        let position = min(positionMilliseconds / 1000, duration)
+        return PlaybackProgress(position: position, duration: duration, start: Date().addingTimeInterval(-position))
+    }
+
     /// Current track's small cover plus encoded data for a lazy popup decode.
     struct Artwork {
         let thumbnail: NSImage

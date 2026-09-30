@@ -95,6 +95,8 @@ final class HoverPopupController {
 
     private func hide() {
         panel?.orderOut(nil)
+        // Drops the timer-driven progress views while nobody can see them.
+        if model.progress != nil { model.progress = nil }
     }
 
     private func makePanel() -> NSPanel {
@@ -150,6 +152,11 @@ struct HoverPopupView: View {
             }
             .multilineTextAlignment(.center)
             .frame(width: coverSize)
+
+            if let progress = model.progress {
+                ProgressRow(progress: progress, isPlaying: model.isPlaying)
+                    .frame(width: coverSize)
+            }
         }
         .padding(16)
         .background {
@@ -187,5 +194,43 @@ struct HoverPopupView: View {
                         .foregroundStyle(.secondary)
                 }
         }
+    }
+}
+
+/// Thin bar with elapsed and total time. While playing, the timer-interval
+/// views advance on their own from `progress.start`.
+private struct ProgressRow: View {
+    let progress: PlaybackProgress
+    let isPlaying: Bool
+
+    var body: some View {
+        VStack(spacing: 3) {
+            if isPlaying {
+                ProgressView(timerInterval: progress.start...progress.end, countsDown: false) {
+                    EmptyView()
+                } currentValueLabel: {
+                    EmptyView()
+                }
+            } else {
+                ProgressView(value: progress.position, total: progress.duration)
+            }
+            HStack {
+                if isPlaying {
+                    Text(timerInterval: progress.start...progress.end, countsDown: false)
+                } else {
+                    Text(Self.format(progress.position))
+                }
+                Spacer()
+                Text(Self.format(progress.duration))
+            }
+            .font(.system(size: 10, weight: .medium).monospacedDigit())
+            .foregroundStyle(.secondary)
+        }
+        .progressViewStyle(.linear)
+        .controlSize(.small)
+    }
+
+    private static func format(_ seconds: TimeInterval) -> String {
+        Duration.seconds(seconds).formatted(.time(pattern: .minuteSecond))
     }
 }

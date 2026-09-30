@@ -19,6 +19,7 @@ final class StatusItemController: NSObject {
     )
     private lazy var hoverPopup = HoverPopupController(model: model) { [weak self] in
         self?.loadLargeArtworkIfNeeded()
+        self?.loadProgress()
     }
 
     private var singleClickTimer: Timer?
@@ -29,6 +30,7 @@ final class StatusItemController: NSObject {
     private var artworkSourceData: Data?
     private var artworkTask: Task<Void, Never>?
     private var largeArtworkTask: Task<Void, Never>?
+    private var progressTask: Task<Void, Never>?
     private var isRefreshing = false
     /// Post-command reconcile; cancelled when the player's own notification
     /// arrives first so we don't fetch the same state twice.
@@ -272,6 +274,8 @@ final class StatusItemController: NSObject {
         updateWaveformCapture()
         refreshArtworkIfNeeded()
         updateAccessibility()
+        // Play/pause or a new track while the popup is open moves the clock.
+        if model.isHovering { loadProgress() }
     }
 
     private func refresh() async {
@@ -352,6 +356,16 @@ final class StatusItemController: NSObject {
             guard !Task.isCancelled, self.lastArtworkKey == key else { return }
             self.model.artworkLarge = image
             self.artworkSourceData = nil
+        }
+    }
+
+    private func loadProgress() {
+        progressTask?.cancel()
+        progressTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            let progress = await self.music.fetchProgress()
+            guard !Task.isCancelled, self.model.isHovering else { return }
+            self.model.progress = progress
         }
     }
 
