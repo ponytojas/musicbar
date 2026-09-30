@@ -150,6 +150,9 @@ final class MusicController {
 
     func previousTrack() { send("previous track") }
 
+    /// Both players clamp `sound volume` to 0...100 themselves.
+    func changeVolume(by delta: Int) { send("set sound volume to (sound volume + \(delta))") }
+
     /// Sends a one-line command to the active player if it's running.
     private func send(_ command: String) {
         let player = activePlayer

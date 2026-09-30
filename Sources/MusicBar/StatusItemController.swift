@@ -22,6 +22,8 @@ final class StatusItemController: NSObject {
     }
 
     private var singleClickTimer: Timer?
+    private var scrollMonitor: Any?
+    private var scrollAccumulator: CGFloat = 0
     private var refreshTimer: Timer?
     private var lastArtworkKey: String?
     private var artworkSourceData: Data?
@@ -38,6 +40,7 @@ final class StatusItemController: NSObject {
         super.init()
 
         configureButton()
+        observeScrollWheel()
         observePlayerNotifications()
         observePlayerLifecycle()
         observeScreenState()
@@ -422,6 +425,29 @@ final class StatusItemController: NSObject {
         default:
             break
         }
+    }
+
+    /// Scrolling over the item changes the player's volume. The hosting view
+    /// passes hit-testing through, so a local monitor catches the events.
+    private func observeScrollWheel() {
+        scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+            let handled = MainActor.assumeIsolated { self?.handleScroll(event) ?? false }
+            return handled ? nil : event
+        }
+    }
+
+    private func handleScroll(_ event: NSEvent) -> Bool {
+        guard event.window === statusItem.button?.window else { return false }
+        // Physical direction regardless of natural scrolling: up is louder.
+        var delta = event.isDirectionInvertedFromDevice ? -event.scrollingDeltaY : event.scrollingDeltaY
+        // Trackpads report points; scale them down to wheel-like steps.
+        if event.hasPreciseScrollingDeltas { delta /= 8 }
+        scrollAccumulator += delta
+        let steps = Int(scrollAccumulator)
+        guard steps != 0 else { return true }
+        scrollAccumulator -= CGFloat(steps)
+        music.changeVolume(by: steps * 5)
+        return true
     }
 
     /// Give the player a moment to apply the command before reconciling.
