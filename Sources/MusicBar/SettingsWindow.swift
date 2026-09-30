@@ -32,7 +32,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 
 struct SettingsView: View {
     @ObservedObject var settings: AppSettings
-    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @State private var loginItemStatus = SMAppService.mainApp.status
+    @State private var launchAtLogin = [.enabled, .requiresApproval].contains(SMAppService.mainApp.status)
 
     var body: some View {
         Form {
@@ -41,6 +42,17 @@ struct SettingsView: View {
                     .onChange(of: launchAtLogin) { _, enabled in
                         setLaunchAtLogin(enabled)
                     }
+            } footer: {
+                if loginItemStatus == .requiresApproval {
+                    HStack {
+                        Text("Approve MusicBar in Login Items to finish.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Open Login Items") { SMAppService.openSystemSettingsLoginItems() }
+                            .controlSize(.small)
+                    }
+                }
             }
 
             Section("Menu Bar") {
@@ -94,6 +106,10 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .frame(width: 380, height: 520)
+        // Pick up an approval granted in System Settings meanwhile.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            loginItemStatus = SMAppService.mainApp.status
+        }
     }
 
     private func setLaunchAtLogin(_ enabled: Bool) {
@@ -105,7 +121,8 @@ struct SettingsView: View {
             }
         } catch {
             NSLog("Launch at login change failed: \(error)")
-            launchAtLogin = SMAppService.mainApp.status == .enabled
+            launchAtLogin = [.enabled, .requiresApproval].contains(SMAppService.mainApp.status)
         }
+        loginItemStatus = SMAppService.mainApp.status
     }
 }
