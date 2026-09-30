@@ -663,6 +663,9 @@ final class StatusItemController: NSObject {
             favoriteItem.target = self
             favoriteItem.state = model.isFavorited == true ? .on : .off
             menu.addItem(favoriteItem)
+            let showItem = NSMenuItem(title: NSLocalizedString("Show in Music", comment: ""), action: #selector(showInMusic), keyEquivalent: "")
+            showItem.target = self
+            menu.addItem(showItem)
         }
         if model.hasTrack, music.activePlayer == .spotify {
             let linkItem = NSMenuItem(title: NSLocalizedString("Copy Song Link", comment: ""), action: #selector(copySongLink), keyEquivalent: "")
@@ -730,6 +733,10 @@ final class StatusItemController: NSObject {
             self.sleepTimerEnd = nil
             self.sleepTimerMinutes = 0
         }
+    }
+
+    @objc private func showInMusic() {
+        music.revealCurrentTrack()
     }
 
     @objc private func favoriteSong() {

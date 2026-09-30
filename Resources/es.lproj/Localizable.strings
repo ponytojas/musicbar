@@ -99,3 +99,6 @@
 "Pauses at %@" = "Se pausa a las %@";
 "Off" = "Desactivado";
 "%d minutes" = "%d minutos";
+
+/* Show in Music */
+"Show in Music" = "Mostrar en Música";

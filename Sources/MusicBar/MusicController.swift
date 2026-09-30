@@ -419,6 +419,21 @@ final class MusicController {
         return response.errorNumber == nil
     }
 
+    /// Brings Music forward with the current track selected.
+    func revealCurrentTrack() {
+        guard activePlayer == .appleMusic, PlayerApp.appleMusic.isRunning else { return }
+        let source = """
+        tell application "Music"
+            reveal current track
+            activate
+        end tell
+        """
+        Task {
+            let response = await scriptRunner.runCommand(source)
+            recordPermissionFailure(response.errorNumber, for: .appleMusic)
+        }
+    }
+
     /// Web link to Spotify's current track; Music exposes no shareable URL.
     func spotifyTrackLink() async -> URL? {
         guard activePlayer == .spotify, PlayerApp.spotify.isRunning else { return nil }
