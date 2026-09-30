@@ -2,28 +2,66 @@ import AppKit
 import Combine
 import SwiftUI
 
-/// Floating panel shown under the status item while the mouse hovers it:
-/// album cover plus song title and artist. Never takes focus or clicks.
+/// What the card's buttons do; the status item controller owns the logic.
+@MainActor
+struct PopupActions {
+    var playPause: @MainActor () -> Void
+    var previous: @MainActor () -> Void
+    var next: @MainActor () -> Void
+}
+
+/// Floating "now playing" card shown under the status item while the mouse
+/// hovers it. The pointer can move onto the card to use its controls; the
+/// card hides once the pointer has left both. Never takes focus.
 @MainActor
 final class HoverPopupController {
     private var panel: NSPanel?
     private var showTask: Task<Void, Never>?
+    private var hideTask: Task<Void, Never>?
     private let model: TrackModel
+    private let actions: PopupActions
     private let onWillShow: () -> Void
-    private lazy var hostingView = NSHostingView(rootView: HoverPopupView(model: model))
+    private lazy var hostingView: HoverTrackingHostingView<HoverPopupView> = {
+        let view = HoverTrackingHostingView(rootView: HoverPopupView(model: model, actions: actions))
+        view.onHoverChange = { [weak self] hovering in
+            if hovering { self?.hideTask?.cancel() } else { self?.scheduleHideCheck() }
+        }
+        return view
+    }()
     private weak var anchorButton: NSStatusBarButton?
-    private var modelCancellable: AnyCancellable?
+    private var cancellables: Set<AnyCancellable> = []
+    /// A menu (e.g. the card's playlist menu) is open; keep the card up.
+    private var isMenuTracking = false
 
-    init(model: TrackModel, onWillShow: @escaping () -> Void = {}) {
+    var isShown: Bool { panel?.isVisible ?? false }
+
+    init(model: TrackModel, actions: PopupActions, onWillShow: @escaping () -> Void = {}) {
         self.model = model
+        self.actions = actions
         self.onWillShow = onWillShow
         // objectWillChange fires before the new value lands; hop a run loop
         // turn so the relayout measures the updated content.
-        modelCancellable = model.objectWillChange
+        model.objectWillChange
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 MainActor.assumeIsolated { self?.relayoutIfVisible() }
             }
+            .store(in: &cancellables)
+        // Menu tracking notifications arrive on the main thread, inside the
+        // tracking run loop mode, so no scheduler hop here.
+        NotificationCenter.default.publisher(for: NSMenu.didBeginTrackingNotification)
+            .sink { [weak self] _ in
+                MainActor.assumeIsolated { self?.isMenuTracking = true }
+            }
+            .store(in: &cancellables)
+        NotificationCenter.default.publisher(for: NSMenu.didEndTrackingNotification)
+            .sink { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.isMenuTracking = false
+                    self?.scheduleHideCheck()
+                }
+            }
+            .store(in: &cancellables)
     }
 
     /// Called from the status item's hover tracking. A short delay before
@@ -32,17 +70,22 @@ final class HoverPopupController {
         showTask?.cancel()
         showTask = nil
 
-        guard hovering else {
-            hide()
-            return
-        }
-        guard model.hasTrack else { return }
+        guard hovering else { return scheduleHideCheck() }
+        hideTask?.cancel()
+        guard !isShown, model.hasTrack else { return }
 
         showTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(250))
             guard !Task.isCancelled, let self, self.model.hasTrack else { return }
             self.show(relativeTo: button)
         }
+    }
+
+    /// Hides right away, e.g. when the status item itself is clicked.
+    func dismiss() {
+        showTask?.cancel()
+        hideTask?.cancel()
+        hide()
     }
 
     private func show(relativeTo button: NSStatusBarButton?) {
@@ -70,6 +113,7 @@ final class HoverPopupController {
         guard let panel, panel.isVisible, let anchorButton else { return }
         guard model.hasTrack else { return hide() }
         layout(panel, under: anchorButton)
+        scheduleHideCheck()
     }
 
     /// Sizes the panel to its content and places it under the status item.
@@ -93,6 +137,30 @@ final class HoverPopupController {
         return origin
     }
 
+    /// Hides after a grace period long enough for the pointer to cross the
+    /// gap between the status item and the card, unless by then it is back
+    /// over either of them or a menu is open.
+    private func scheduleHideCheck() {
+        hideTask?.cancel()
+        hideTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(300))
+            guard let self, !Task.isCancelled,
+                  !self.isMenuTracking,
+                  !self.pointerIsInside()
+            else { return }
+            self.hide()
+        }
+    }
+
+    private func pointerIsInside() -> Bool {
+        guard let panel, panel.isVisible else { return false }
+        var area = panel.frame
+        if let button = anchorButton, let window = button.window {
+            area = area.union(window.convertToScreen(button.convert(button.bounds, to: nil)))
+        }
+        return area.contains(NSEvent.mouseLocation)
+    }
+
     private func hide() {
         panel?.orderOut(nil)
         // Drops the timer-driven progress views while nobody can see them.
@@ -110,7 +178,6 @@ final class HoverPopupController {
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = true
-        panel.ignoresMouseEvents = true
         panel.hidesOnDeactivate = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.contentView = hostingView
@@ -122,6 +189,7 @@ final class HoverPopupController {
 /// like a compact "now playing" card.
 struct HoverPopupView: View {
     @ObservedObject var model: TrackModel
+    let actions: PopupActions
 
     private let coverSize: CGFloat = 168
 
@@ -157,6 +225,9 @@ struct HoverPopupView: View {
                 ProgressRow(progress: progress, isPlaying: model.isPlaying)
                     .frame(width: coverSize)
             }
+
+            ControlsRow(model: model, actions: actions)
+                .frame(width: coverSize)
         }
         .padding(16)
         .background {
@@ -232,5 +303,49 @@ private struct ProgressRow: View {
 
     private static func format(_ seconds: TimeInterval) -> String {
         Duration.seconds(seconds).formatted(.time(pattern: .minuteSecond))
+    }
+}
+
+/// Transport controls. The fixed-width side slots keep the transport centered
+/// whether or not the player supports the library actions.
+private struct ControlsRow: View {
+    @ObservedObject var model: TrackModel
+    let actions: PopupActions
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Color.clear.frame(width: 30, height: 30)
+            Spacer(minLength: 0)
+            ControlButton(title: "Previous Track", systemImage: "backward.fill", action: actions.previous)
+            ControlButton(
+                title: model.isPlaying ? "Pause" : "Play",
+                systemImage: model.isPlaying ? "pause.fill" : "play.fill",
+                size: 20,
+                action: actions.playPause
+            )
+            ControlButton(title: "Next Track", systemImage: "forward.fill", action: actions.next)
+            Spacer(minLength: 0)
+            Color.clear.frame(width: 30, height: 30)
+        }
+    }
+}
+
+private struct ControlButton: View {
+    let title: LocalizedStringKey
+    let systemImage: String
+    var size: CGFloat = 13
+    let action: @MainActor () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: size, weight: .semibold))
+                .contentTransition(.symbolEffect(.replace))
+                .frame(width: size + 20, height: 30)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(Text(title))
+        .accessibilityLabel(Text(title))
     }
 }

@@ -64,3 +64,9 @@
 "Privacy" = "Privacy";
 "Look up missing artwork online" = "Look up missing artwork online";
 "Sends the song title and artist to Apple's iTunes Search when Music has no cover." = "Sends the song title and artist to Apple's iTunes Search when Music has no cover.";
+
+/* Hover card controls */
+"Previous Track" = "Previous Track";
+"Next Track" = "Next Track";
+"Play" = "Play";
+"Pause" = "Pause";

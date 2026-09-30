@@ -17,7 +17,23 @@ final class StatusItemController: NSObject {
             Task { @MainActor [weak self] in self?.waveformModel.reset() }
         }
     )
-    private lazy var hoverPopup = HoverPopupController(model: model) { [weak self] in
+    private lazy var hoverPopup = HoverPopupController(
+        model: model,
+        actions: PopupActions(
+            playPause: { [weak self] in
+                self?.music.playPause()
+                self?.refreshSoon()
+            },
+            previous: { [weak self] in
+                self?.music.previousTrack()
+                self?.refreshSoon()
+            },
+            next: { [weak self] in
+                self?.music.nextTrack()
+                self?.refreshSoon()
+            }
+        )
+    ) { [weak self] in
         self?.loadLargeArtworkIfNeeded()
         self?.loadProgress()
     }
@@ -70,7 +86,8 @@ final class StatusItemController: NSObject {
         button.action = #selector(handleClick)
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
 
-        let hosting = PassThroughHostingView(rootView: StatusBarView(model: model, waveform: waveformModel))
+        let hosting = HoverTrackingHostingView(rootView: StatusBarView(model: model, waveform: waveformModel))
+        hosting.passesClicksThrough = true
         hosting.onHoverChange = { [weak self] hovering in
             guard let self else { return }
             self.model.isHovering = hovering
@@ -305,7 +322,7 @@ final class StatusItemController: NSObject {
         refreshArtworkIfNeeded()
         updateAccessibility()
         // Play/pause or a new track while the popup is open moves the clock.
-        if model.isHovering { loadProgress() }
+        if hoverPopup.isShown { loadProgress() }
     }
 
     private func refresh() async {
@@ -394,7 +411,7 @@ final class StatusItemController: NSObject {
         progressTask = Task { @MainActor [weak self] in
             guard let self else { return }
             let progress = await self.music.fetchProgress()
-            guard !Task.isCancelled, self.model.isHovering else { return }
+            guard !Task.isCancelled, self.hoverPopup.isShown else { return }
             self.model.progress = progress
         }
     }
@@ -425,7 +442,7 @@ final class StatusItemController: NSObject {
         guard let event = NSApp.currentEvent else { return }
 
         // Don't leave the popup floating over a menu or while interacting.
-        hoverPopup.setHovering(false, relativeTo: nil)
+        hoverPopup.dismiss()
 
         if event.type == .rightMouseUp {
             showContextMenu()
@@ -571,12 +588,18 @@ final class StatusItemController: NSObject {
     }
 }
 
-/// Lets clicks fall through to the status item button underneath while still
-/// reporting hover via a tracking area (tracking ignores hitTest).
-private final class PassThroughHostingView<Content: View>: NSHostingView<Content> {
+/// Reports hover through a tracking area (tracking ignores hitTest). The
+/// status item passes clicks through to its button underneath; the hover
+/// card takes the first click even though its panel never becomes key.
+final class HoverTrackingHostingView<Content: View>: NSHostingView<Content> {
     var onHoverChange: ((Bool) -> Void)?
+    var passesClicksThrough = false
 
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        passesClicksThrough ? nil : super.hitTest(point)
+    }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()

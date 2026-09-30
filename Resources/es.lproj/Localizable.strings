@@ -64,3 +64,9 @@
 "Privacy" = "Privacidad";
 "Look up missing artwork online" = "Buscar carátulas que falten en internet";
 "Sends the song title and artist to Apple's iTunes Search when Music has no cover." = "Envía el título y el artista a la búsqueda de iTunes de Apple cuando Música no tiene carátula.";
+
+/* Hover card controls */
+"Previous Track" = "Pista anterior";
+"Next Track" = "Pista siguiente";
+"Play" = "Reproducir";
+"Pause" = "Pausar";
