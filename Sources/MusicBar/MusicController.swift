@@ -268,13 +268,15 @@ final class MusicController {
         components.queryItems = [
             URLQueryItem(name: "term", value: "\(artist) \(title)"),
             URLQueryItem(name: "media", value: "music"),
-            URLQueryItem(name: "limit", value: "1"),
+            URLQueryItem(name: "entity", value: "song"),
+            URLQueryItem(name: "limit", value: "5"),
         ]
         guard let url = components.url,
               let data = await downloadData(from: url, maximumBytes: Self.maximumSearchResponseBytes),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let results = json["results"] as? [[String: Any]],
-              let artworkURLString = results.first?["artworkUrl100"] as? String,
+              let match = Self.searchResult(in: results, matchingArtist: artist),
+              let artworkURLString = match["artworkUrl100"] as? String,
               let artworkURL = URL(string: artworkURLString.replacingOccurrences(of: "100x100", with: "600x600")),
               artworkURL.scheme == "https"
         else { return nil }
@@ -283,6 +285,16 @@ final class MusicController {
             maximumBytes: Self.maximumArtworkBytes,
             requiredMIMEPrefix: "image/"
         )
+    }
+
+    /// First result by the same artist; either name may carry extra credits
+    /// ("A & B", "A feat. C"), so containment in either direction counts.
+    static func searchResult(in results: [[String: Any]], matchingArtist artist: String) -> [String: Any]? {
+        guard !artist.isEmpty else { return results.first }
+        return results.first { result in
+            guard let name = result["artistName"] as? String else { return false }
+            return name.localizedCaseInsensitiveContains(artist) || artist.localizedCaseInsensitiveContains(name)
+        }
     }
 
     private func fetchAppleMusicArtworkData() async -> Data? {

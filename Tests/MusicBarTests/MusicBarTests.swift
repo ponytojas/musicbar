@@ -67,4 +67,15 @@ final class MusicBarTests: XCTestCase {
         XCTAssertTrue(output.allSatisfy { (0...1).contains($0) })
         XCTAssertEqual(WaveformMath.displayLevels(from: [0, 0]), [0, 0])
     }
+
+    func testSearchResultMustMatchArtist() {
+        let results: [[String: Any]] = [
+            ["artistName": "Tribute Band", "trackName": "Song"],
+            ["artistName": "The Artist & Friend", "trackName": "Song"],
+        ]
+        let match = MusicController.searchResult(in: results, matchingArtist: "the artist")
+        XCTAssertEqual(match?["artistName"] as? String, "The Artist & Friend")
+        XCTAssertNil(MusicController.searchResult(in: results, matchingArtist: "Nobody"))
+        XCTAssertEqual(MusicController.searchResult(in: results, matchingArtist: "")?["artistName"] as? String, "Tribute Band")
+    }
 }
