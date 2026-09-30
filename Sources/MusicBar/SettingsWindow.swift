@@ -19,7 +19,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             window.setFrameAutosaveName("SettingsWindow")
             self.window = window
         }
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
         window?.makeKeyAndOrderFront(nil)
     }
 

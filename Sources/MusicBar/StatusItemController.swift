@@ -227,7 +227,7 @@ final class StatusItemController: NSObject {
             comment: ""
         )
         alert.addButton(withTitle: NSLocalizedString("Continue", comment: ""))
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
         alert.runModal()
     }
 
@@ -240,7 +240,7 @@ final class StatusItemController: NSObject {
         )
         alert.addButton(withTitle: NSLocalizedString("Open System Settings", comment: ""))
         alert.addButton(withTitle: NSLocalizedString("Later", comment: ""))
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
         if alert.runModal() == .alertFirstButtonReturn,
            let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation") {
             NSWorkspace.shared.open(url)
@@ -461,7 +461,7 @@ final class StatusItemController: NSObject {
     }
 
     @objc private func showAbout() {
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
         NSApp.orderFrontStandardAboutPanel(nil)
     }
 
