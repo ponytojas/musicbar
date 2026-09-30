@@ -248,14 +248,31 @@ final class MusicController {
         !id.isEmpty && id.allSatisfy(\.isHexDigit)
     }
 
-    /// Returns whether Music added the track. Catalog tracks that aren't in
-    /// the library often can't be added by script.
+    /// Returns whether Music added the track. A streamed catalog song is a
+    /// URL track, which Music refuses to duplicate, so this adds the song's
+    /// library copy instead: same persistent ID, else same name, artist, and
+    /// album, else same name and artist. Only with no library copy does it
+    /// try the current track itself.
     func addCurrentTrack(to playlist: Playlist) async -> Bool {
         guard activePlayer == .appleMusic,
               PlayerApp.appleMusic.isRunning,
               Self.isPersistentID(playlist.id)
         else { return false }
-        let source = "tell application \"Music\" to duplicate current track to (first user playlist whose persistent ID is \"\(playlist.id)\")"
+        let source = """
+        tell application "Music"
+            set targetPlaylist to first user playlist whose persistent ID is "\(playlist.id)"
+            set sourceTrack to current track
+            set trackID to persistent ID of sourceTrack
+            set trackName to name of sourceTrack
+            set trackArtist to artist of sourceTrack
+            set trackAlbum to album of sourceTrack
+            set matches to (every track of library playlist 1 whose persistent ID is trackID)
+            if matches is {} then set matches to (every track of library playlist 1 whose name is trackName and artist is trackArtist and album is trackAlbum)
+            if matches is {} then set matches to (every track of library playlist 1 whose name is trackName and artist is trackArtist)
+            if matches is {} then set matches to {sourceTrack}
+            duplicate (item 1 of matches) to targetPlaylist
+        end tell
+        """
         let response = await scriptRunner.runCommand(source)
         recordPermissionFailure(response.errorNumber, for: .appleMusic)
         return response.errorNumber == nil
