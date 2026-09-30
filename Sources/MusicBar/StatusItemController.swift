@@ -33,7 +33,8 @@ final class StatusItemController: NSObject {
                 self?.refreshSoon()
             },
             toggleFavorite: { [weak self] in self?.toggleFavorite() },
-            addToPlaylist: { [weak self] playlist in self?.addCurrentTrack(to: playlist) }
+            addToPlaylist: { [weak self] playlist in self?.addCurrentTrack(to: playlist) },
+            seek: { [weak self] position in self?.seek(to: position) }
         )
     ) { [weak self] in
         self?.loadLargeArtworkIfNeeded()
@@ -469,6 +470,17 @@ final class StatusItemController: NSObject {
             guard !Task.isCancelled else { return }
             self?.model.popupNotice = nil
         }
+    }
+
+    /// Optimistic: moves the bar at once instead of waiting for a reload.
+    private func seek(to position: TimeInterval) {
+        music.seek(to: position)
+        guard let progress = model.progress else { return }
+        model.progress = PlaybackProgress(
+            position: position,
+            duration: progress.duration,
+            start: Date().addingTimeInterval(-position)
+        )
     }
 
     /// Optimistic: flips the heart at once and reverts if Music refuses.

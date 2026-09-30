@@ -10,6 +10,7 @@ struct PopupActions {
     var next: @MainActor () -> Void
     var toggleFavorite: @MainActor () -> Void
     var addToPlaylist: @MainActor (Playlist) -> Void
+    var seek: @MainActor (TimeInterval) -> Void
 }
 
 /// Floating "now playing" card shown under the status item while the mouse
@@ -232,7 +233,7 @@ struct HoverPopupView: View {
             .multilineTextAlignment(.center)
             .frame(width: coverSize)
 
-            ProgressRow(progress: model.progress, isPlaying: model.isPlaying, notice: model.popupNotice)
+            ProgressRow(progress: model.progress, isPlaying: model.isPlaying, notice: model.popupNotice, onSeek: actions.seek)
                 .frame(width: coverSize)
 
             ControlsRow(model: model, actions: actions)
@@ -287,10 +288,23 @@ private struct ProgressRow: View {
     let progress: PlaybackProgress?
     let isPlaying: Bool
     let notice: String?
+    let onSeek: @MainActor (TimeInterval) -> Void
 
     var body: some View {
         VStack(spacing: 3) {
-            bar.opacity(progress == nil ? 0 : 1)
+            // Taller than the bar itself so it's an easy click target.
+            GeometryReader { geometry in
+                bar
+                    .frame(maxHeight: .infinity)
+                    .contentShape(Rectangle())
+                    .onTapGesture(coordinateSpace: .local) { location in
+                        guard let progress, geometry.size.width > 0 else { return }
+                        let fraction = min(max(location.x / geometry.size.width, 0), 1)
+                        onSeek(fraction * progress.duration)
+                    }
+            }
+            .frame(height: 12)
+            .opacity(progress == nil ? 0 : 1)
             ZStack {
                 // Reserves one line of height whatever is shown.
                 Text(verbatim: "0:00").hidden()

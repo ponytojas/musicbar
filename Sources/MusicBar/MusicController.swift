@@ -151,6 +151,8 @@ final class MusicController {
 
     func previousTrack() { send("previous track") }
 
+    func seek(to position: TimeInterval) { send("set player position to \(position)") }
+
     /// Both players clamp `sound volume` to 0...100 themselves.
     func changeVolume(by delta: Int) { send("set sound volume to (sound volume + \(delta))") }
 
