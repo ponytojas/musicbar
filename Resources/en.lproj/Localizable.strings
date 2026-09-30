@@ -59,3 +59,8 @@
 "After 1 minute" = "After 1 minute";
 "After 5 minutes" = "After 5 minutes";
 "After 15 minutes" = "After 15 minutes";
+
+/* Privacy */
+"Privacy" = "Privacy";
+"Look up missing artwork online" = "Look up missing artwork online";
+"Sends the song title and artist to Apple's iTunes Search when Music has no cover." = "Sends the song title and artist to Apple's iTunes Search when Music has no cover.";

@@ -328,8 +328,10 @@ final class MusicController {
             guard !Task.isCancelled else { return nil }
             if let retryData = await fetchAppleMusicArtworkData() {
                 data = retryData
-            } else {
+            } else if AppSettings.shared.lookUpArtworkOnline {
                 data = await fetchArtworkFromITunesSearch(title: title, artist: artist)
+            } else {
+                data = nil
             }
         case .spotify:
             data = await fetchSpotifyArtworkData()

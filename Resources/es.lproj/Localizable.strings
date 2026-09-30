@@ -59,3 +59,8 @@
 "After 1 minute" = "Tras 1 minuto";
 "After 5 minutes" = "Tras 5 minutos";
 "After 15 minutes" = "Tras 15 minutos";
+
+/* Privacy */
+"Privacy" = "Privacidad";
+"Look up missing artwork online" = "Buscar carátulas que falten en internet";
+"Sends the song title and artist to Apple's iTunes Search when Music has no cover." = "Envía el título y el artista a la búsqueda de iTunes de Apple cuando Música no tiene carátula.";

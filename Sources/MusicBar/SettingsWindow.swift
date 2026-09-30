@@ -115,9 +115,19 @@ struct SettingsView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
+
+            Section {
+                Toggle("Look up missing artwork online", isOn: $settings.lookUpArtworkOnline)
+            } header: {
+                Text("Privacy")
+            } footer: {
+                Text("Sends the song title and artist to Apple's iTunes Search when Music has no cover.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
-        .frame(width: 380, height: 520)
+        .frame(width: 380, height: 640)
         // Pick up an approval granted in System Settings meanwhile.
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             loginItemStatus = SMAppService.mainApp.status
