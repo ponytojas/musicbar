@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import SwiftUI
+import UserNotifications
 
 @MainActor
 final class StatusItemController: NSObject {
@@ -62,6 +63,7 @@ final class StatusItemController: NSObject {
     private var sleepTimerMinutes = 0
     private var recentTracks = StatusItemController.loadRecentTracks()
     private static let recentTracksKey = "recentTracks"
+    private var lastNotifiedKey: String?
     private var isRefreshing = false
     /// Post-command reconcile; cancelled when the player's own notification
     /// arrives first so we don't fetch the same state twice.
@@ -393,6 +395,7 @@ final class StatusItemController: NSObject {
         model.isFavorited = nil
         lastArtworkKey = key
         if model.hasTrack { recordRecentTrack() }
+        notifyTrackChangeIfNeeded(key: key)
         let title = model.title
         let artist = model.artist
         artworkTask = Task { @MainActor [weak self] in
@@ -416,6 +419,22 @@ final class StatusItemController: NSObject {
             // A transient failure may retry on the next reconciliation.
             if artwork == nil { self.lastArtworkKey = nil }
         }
+    }
+
+    /// Banner for a new song, e.g. while the menu bar is hidden in full
+    /// screen. Skips the song already playing at launch.
+    private func notifyTrackChangeIfNeeded(key: String) {
+        defer { lastNotifiedKey = key }
+        guard AppSettings.shared.notifyOnTrackChange,
+              let lastNotifiedKey, lastNotifiedKey != key,
+              model.hasTrack, model.isPlaying
+        else { return }
+        let content = UNMutableNotificationContent()
+        content.title = model.title
+        content.body = model.artist
+        // One identifier, so each song replaces the previous banner.
+        let request = UNNotificationRequest(identifier: "track-change", content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
     }
 
     private static func loadRecentTracks() -> [RecentTrack] {

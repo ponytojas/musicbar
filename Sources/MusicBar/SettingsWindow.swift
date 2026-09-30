@@ -2,6 +2,7 @@ import AppKit
 import os
 import ServiceManagement
 import SwiftUI
+import UserNotifications
 
 @MainActor
 final class SettingsWindowController: NSObject, NSWindowDelegate {
@@ -64,6 +65,14 @@ struct SettingsView: View {
                 Text("⌃⌥⌘M shows the card, ⌃⌥⌘F favorites the song, and ⌃⌥⌘P adds it to a playlist.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+            }
+
+            Section("Notifications") {
+                Toggle("Notify when the song changes", isOn: $settings.notifyOnTrackChange)
+                    .onChange(of: settings.notifyOnTrackChange) { _, enabled in
+                        guard enabled else { return }
+                        UNUserNotificationCenter.current().requestAuthorization(options: [.alert]) { _, _ in }
+                    }
             }
 
             Section("Menu Bar") {
@@ -137,7 +146,7 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 380, height: 640)
+        .frame(width: 380, height: 720)
         // Pick up an approval granted in System Settings meanwhile.
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             loginItemStatus = SMAppService.mainApp.status

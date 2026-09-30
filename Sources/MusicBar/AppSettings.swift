@@ -62,6 +62,9 @@ final class AppSettings: ObservableObject {
     @Published var globalShortcuts: Bool {
         didSet { UserDefaults.standard.set(globalShortcuts, forKey: "globalShortcuts") }
     }
+    @Published var notifyOnTrackChange: Bool {
+        didSet { UserDefaults.standard.set(notifyOnTrackChange, forKey: "notifyOnTrackChange") }
+    }
     @Published var textWidth: Double {
         didSet { UserDefaults.standard.set(textWidth, forKey: "textWidth") }
     }
@@ -105,6 +108,7 @@ final class AppSettings: ObservableObject {
         collapseAfterPauseMinutes = defaults.integer(forKey: "collapseAfterPauseMinutes")
         lookUpArtworkOnline = defaults.bool(forKey: "lookUpArtworkOnline")
         globalShortcuts = defaults.bool(forKey: "globalShortcuts")
+        notifyOnTrackChange = defaults.bool(forKey: "notifyOnTrackChange")
         textWidth = defaults.double(forKey: "textWidth")
         holdSeconds = defaults.integer(forKey: "holdSeconds")
         equalizerPosition = EqualizerPosition(rawValue: defaults.string(forKey: "equalizerPosition") ?? "") ?? .left

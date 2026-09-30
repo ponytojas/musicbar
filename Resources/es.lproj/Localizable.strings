@@ -113,3 +113,7 @@
 "⌃⌥⌘M shows the card, ⌃⌥⌘F favorites the song, and ⌃⌥⌘P adds it to a playlist." = "⌃⌥⌘M muestra la tarjeta, ⌃⌥⌘F marca la canción como favorita y ⌃⌥⌘P la añade a una playlist.";
 "Added to Favorites" = "Añadida a favoritas";
 "Removed from Favorites" = "Quitada de favoritas";
+
+/* Notifications */
+"Notifications" = "Notificaciones";
+"Notify when the song changes" = "Avisar cuando cambie la canción";
