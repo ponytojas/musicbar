@@ -215,33 +215,22 @@ struct HoverPopupView: View {
                 Text(model.title)
                     .font(.system(size: 13, weight: .semibold))
                     .lineLimit(1)
-                if !model.artist.isEmpty {
-                    Text(model.artist)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
+                // Always laid out so a missing artist doesn't shrink the card.
+                Text(model.artist.isEmpty ? " " : model.artist)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
             .multilineTextAlignment(.center)
             .frame(width: coverSize)
 
-            if let progress = model.progress {
-                ProgressRow(progress: progress, isPlaying: model.isPlaying)
-                    .frame(width: coverSize)
-            }
+            ProgressRow(progress: model.progress, isPlaying: model.isPlaying, notice: model.popupNotice)
+                .frame(width: coverSize)
 
             ControlsRow(model: model, actions: actions)
                 .frame(width: coverSize)
                 // Pointer-only card: a clicked button shouldn't keep a focus ring.
                 .focusEffectDisabled()
-
-            if let notice = model.popupNotice {
-                Text(notice)
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .frame(width: coverSize)
-            }
         }
         .padding(16)
         .background {
@@ -282,37 +271,55 @@ struct HoverPopupView: View {
     }
 }
 
-/// Thin bar with elapsed and total time. While playing, the timer-interval
-/// views advance on their own from `progress.start`.
+/// Thin bar with elapsed and total time, or a notice in place of the times.
+/// Always takes the same space so the card never changes height: with no
+/// position (radio, or before it loads) the bar is hidden, not removed.
+/// While playing, the timer-interval views advance on their own.
 private struct ProgressRow: View {
-    let progress: PlaybackProgress
+    let progress: PlaybackProgress?
     let isPlaying: Bool
+    let notice: String?
 
     var body: some View {
         VStack(spacing: 3) {
-            if isPlaying {
-                ProgressView(timerInterval: progress.start...progress.end, countsDown: false) {
-                    EmptyView()
-                } currentValueLabel: {
-                    EmptyView()
+            bar.opacity(progress == nil ? 0 : 1)
+            ZStack {
+                // Reserves one line of height whatever is shown.
+                Text(verbatim: "0:00").hidden()
+                if let notice {
+                    Text(notice)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity)
+                } else if let progress {
+                    HStack {
+                        if isPlaying {
+                            Text(timerInterval: progress.start...progress.end, countsDown: false)
+                        } else {
+                            Text(Self.format(progress.position))
+                        }
+                        Spacer()
+                        Text(Self.format(progress.duration))
+                    }
                 }
-            } else {
-                ProgressView(value: progress.position, total: progress.duration)
-            }
-            HStack {
-                if isPlaying {
-                    Text(timerInterval: progress.start...progress.end, countsDown: false)
-                } else {
-                    Text(Self.format(progress.position))
-                }
-                Spacer()
-                Text(Self.format(progress.duration))
             }
             .font(.system(size: 10, weight: .medium).monospacedDigit())
             .foregroundStyle(.secondary)
         }
         .progressViewStyle(.linear)
         .controlSize(.small)
+    }
+
+    @ViewBuilder
+    private var bar: some View {
+        if let progress, isPlaying {
+            ProgressView(timerInterval: progress.start...progress.end, countsDown: false) {
+                EmptyView()
+            } currentValueLabel: {
+                EmptyView()
+            }
+        } else {
+            ProgressView(value: progress?.position ?? 0, total: progress?.duration ?? 1)
+        }
     }
 
     private static func format(_ seconds: TimeInterval) -> String {
