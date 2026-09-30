@@ -232,6 +232,8 @@ struct HoverPopupView: View {
 
             ControlsRow(model: model, actions: actions)
                 .frame(width: coverSize)
+                // Pointer-only card: a clicked button shouldn't keep a focus ring.
+                .focusEffectDisabled()
 
             if let notice = model.popupNotice {
                 Text(notice)
