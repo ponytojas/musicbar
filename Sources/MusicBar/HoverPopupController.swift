@@ -115,13 +115,19 @@ final class HoverPopupController {
     private func relayoutIfVisible() {
         guard let panel, panel.isVisible, let anchorButton else { return }
         guard model.hasTrack else { return hide() }
-        layout(panel, under: anchorButton)
+        // The item's width follows the title, so re-centering on a track
+        // change would slide the open card sideways.
+        layout(panel, under: anchorButton, keepingHorizontalPosition: true)
         scheduleHideCheck()
     }
 
     /// Sizes the panel to its content and places it under the status item.
     @discardableResult
-    private func layout(_ panel: NSPanel, under button: NSStatusBarButton) -> NSPoint? {
+    private func layout(
+        _ panel: NSPanel,
+        under button: NSStatusBarButton,
+        keepingHorizontalPosition: Bool = false
+    ) -> NSPoint? {
         guard let buttonWindow = button.window else { return nil }
         let fittingSize = hostingView.fittingSize
         hostingView.frame.size = fittingSize
@@ -133,7 +139,9 @@ final class HoverPopupController {
             x: buttonFrame.midX - panel.frame.width / 2,
             y: buttonFrame.minY - panel.frame.height - 6
         )
-        if let screen = buttonWindow.screen {
+        if keepingHorizontalPosition {
+            origin.x = panel.frame.minX
+        } else if let screen = buttonWindow.screen {
             origin.x = min(max(origin.x, screen.visibleFrame.minX + 4), screen.visibleFrame.maxX - panel.frame.width - 4)
         }
         panel.setFrameOrigin(origin)
