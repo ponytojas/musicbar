@@ -232,25 +232,21 @@ final class AudioWaveformCapture: @unchecked Sendable {
             guard let rawData = buffer.mData else { continue }
             let channelCount = max(1, Int(buffer.mNumberChannels))
             if isFloat, format.mBitsPerChannel == 32 {
-                let sampleCount = Int(buffer.mDataByteSize) / MemoryLayout<Float>.size
+                let samples = rawData.assumingMemoryBound(to: Float.self)
                 Self.accumulate(
-                    rawData.assumingMemoryBound(to: Float.self),
-                    sampleCount: sampleCount,
+                    sampleCount: Int(buffer.mDataByteSize) / MemoryLayout<Float>.size,
                     channelCount: channelCount,
-                    scale: 1,
                     sums: &sums,
                     counts: &counts
-                )
+                ) { Double(samples[$0]) }
             } else if isSignedInteger, format.mBitsPerChannel == 16 {
-                let sampleCount = Int(buffer.mDataByteSize) / MemoryLayout<Int16>.size
+                let samples = rawData.assumingMemoryBound(to: Int16.self)
                 Self.accumulate(
-                    rawData.assumingMemoryBound(to: Int16.self),
-                    sampleCount: sampleCount,
+                    sampleCount: Int(buffer.mDataByteSize) / MemoryLayout<Int16>.size,
                     channelCount: channelCount,
-                    scale: 1 / Double(Int16.max),
                     sums: &sums,
                     counts: &counts
-                )
+                ) { Double(samples[$0]) / Double(Int16.max) }
             }
         }
 
@@ -261,40 +257,21 @@ final class AudioWaveformCapture: @unchecked Sendable {
         onLevels(WaveformMath.displayLevels(from: measuredLevels))
     }
 
-    private static func accumulate<T: BinaryInteger>(
-        _ samples: UnsafePointer<T>,
-        sampleCount: Int,
-        channelCount: Int,
-        scale: Double,
-        sums: inout [Double],
-        counts: inout [Int]
-    ) {
-        let frameCount = sampleCount / channelCount
-        guard frameCount > 0 else { return }
-        for frame in 0..<frameCount {
-            let bucket = min(sums.count - 1, frame * sums.count / frameCount)
-            for channel in 0..<channelCount {
-                let value = Double(samples[frame * channelCount + channel]) * scale
-                sums[bucket] += value * value
-                counts[bucket] += 1
-            }
-        }
-    }
-
+    /// Sums squared samples into one bucket per bar; `sample` reads and
+    /// scales the interleaved sample at an index.
     private static func accumulate(
-        _ samples: UnsafePointer<Float>,
         sampleCount: Int,
         channelCount: Int,
-        scale: Double,
         sums: inout [Double],
-        counts: inout [Int]
+        counts: inout [Int],
+        sample: (Int) -> Double
     ) {
         let frameCount = sampleCount / channelCount
         guard frameCount > 0 else { return }
         for frame in 0..<frameCount {
             let bucket = min(sums.count - 1, frame * sums.count / frameCount)
             for channel in 0..<channelCount {
-                let value = Double(samples[frame * channelCount + channel]) * scale
+                let value = sample(frame * channelCount + channel)
                 sums[bucket] += value * value
                 counts[bucket] += 1
             }
