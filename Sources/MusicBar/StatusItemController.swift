@@ -55,6 +55,9 @@ final class StatusItemController: NSObject {
     private var progressTask: Task<Void, Never>?
     private var collapseTask: Task<Void, Never>?
     private var noticeTask: Task<Void, Never>?
+    private var sleepTimerTask: Task<Void, Never>?
+    private var sleepTimerEnd: Date?
+    private var sleepTimerMinutes = 0
     private var isRefreshing = false
     /// Post-command reconcile; cancelled when the player's own notification
     /// arrives first so we don't fetch the same state twice.
@@ -667,6 +670,8 @@ final class StatusItemController: NSObject {
             menu.addItem(linkItem)
         }
         menu.addItem(.separator())
+        menu.addItem(sleepTimerMenuItem())
+        menu.addItem(.separator())
         let settingsItem = NSMenuItem(title: NSLocalizedString("Settings…", comment: ""), action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
         menu.addItem(settingsItem)
@@ -682,6 +687,49 @@ final class StatusItemController: NSObject {
         statusItem.menu = menu
         statusItem.button?.performClick(nil)
         statusItem.menu = nil
+    }
+
+    private func sleepTimerMenuItem() -> NSMenuItem {
+        let item = NSMenuItem(title: NSLocalizedString("Sleep Timer", comment: ""), action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+        if let end = sleepTimerEnd {
+            // No action, so the menu shows it disabled.
+            submenu.addItem(NSMenuItem(
+                title: String(format: NSLocalizedString("Pauses at %@", comment: ""), end.formatted(date: .omitted, time: .shortened)),
+                action: nil,
+                keyEquivalent: ""
+            ))
+            submenu.addItem(.separator())
+        }
+        for minutes in [0, 15, 30, 60] {
+            let title = minutes == 0
+                ? NSLocalizedString("Off", comment: "")
+                : String(format: NSLocalizedString("%d minutes", comment: ""), minutes)
+            let option = NSMenuItem(title: title, action: #selector(setSleepTimer(_:)), keyEquivalent: "")
+            option.target = self
+            option.tag = minutes
+            option.state = sleepTimerMinutes == minutes ? .on : .off
+            submenu.addItem(option)
+        }
+        item.submenu = submenu
+        return item
+    }
+
+    @objc private func setSleepTimer(_ sender: NSMenuItem) {
+        let minutes = sender.tag
+        sleepTimerTask?.cancel()
+        sleepTimerTask = nil
+        sleepTimerEnd = nil
+        sleepTimerMinutes = minutes
+        guard minutes > 0 else { return }
+        sleepTimerEnd = Date().addingTimeInterval(TimeInterval(minutes * 60))
+        sleepTimerTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(minutes * 60))
+            guard !Task.isCancelled, let self else { return }
+            self.music.pause()
+            self.sleepTimerEnd = nil
+            self.sleepTimerMinutes = 0
+        }
     }
 
     @objc private func favoriteSong() {

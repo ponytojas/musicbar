@@ -151,6 +151,8 @@ final class MusicController {
 
     func previousTrack() { send("previous track") }
 
+    func pause() { send("pause") }
+
     func seek(to position: TimeInterval) { send("set player position to \(position)") }
 
     func fetchPlaybackModes() async -> PlaybackModes? {

@@ -93,3 +93,9 @@
 /* Hover card output */
 "Output" = "Salida";
 "Couldn't switch to %@" = "No se pudo cambiar a %@";
+
+/* Sleep timer */
+"Sleep Timer" = "Temporizador";
+"Pauses at %@" = "Se pausa a las %@";
+"Off" = "Desactivado";
+"%d minutes" = "%d minutos";
