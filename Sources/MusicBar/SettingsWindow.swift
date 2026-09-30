@@ -64,6 +64,12 @@ struct SettingsView: View {
                 }
                 Toggle("Show album artwork", isOn: $settings.showArtwork)
                 Toggle("Show artist name", isOn: $settings.showArtist)
+                Picker("Hide title when paused", selection: $settings.collapseAfterPauseMinutes) {
+                    Text("Never").tag(0)
+                    Text("After 1 minute").tag(1)
+                    Text("After 5 minutes").tag(5)
+                    Text("After 15 minutes").tag(15)
+                }
             }
 
             Section("Equalizer") {

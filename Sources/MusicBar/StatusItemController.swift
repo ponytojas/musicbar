@@ -31,6 +31,7 @@ final class StatusItemController: NSObject {
     private var artworkTask: Task<Void, Never>?
     private var largeArtworkTask: Task<Void, Never>?
     private var progressTask: Task<Void, Never>?
+    private var collapseTask: Task<Void, Never>?
     private var isRefreshing = false
     /// Post-command reconcile; cancelled when the player's own notification
     /// arrives first so we don't fetch the same state twice.
@@ -145,6 +146,12 @@ final class StatusItemController: NSObject {
                 Task { @MainActor [weak self] in self?.updateWaveformCapture() }
             }
             .store(in: &settingsCancellables)
+        model.$isPlaying
+            .combineLatest(AppSettings.shared.$collapseAfterPauseMinutes)
+            .sink { [weak self] isPlaying, minutes in
+                Task { @MainActor [weak self] in self?.scheduleCollapse(isPlaying: isPlaying, minutes: minutes) }
+            }
+            .store(in: &settingsCancellables)
         AppSettings.shared.$playerMode
             .dropFirst()
             .removeDuplicates()
@@ -158,6 +165,20 @@ final class StatusItemController: NSObject {
             name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
             object: nil
         )
+    }
+
+    /// Shrinks the item to the music note after a long pause; any change in
+    /// play state or in the setting restores it.
+    private func scheduleCollapse(isPlaying: Bool, minutes: Int) {
+        collapseTask?.cancel()
+        collapseTask = nil
+        if model.isCollapsed { model.isCollapsed = false }
+        guard !isPlaying, minutes > 0 else { return }
+        collapseTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(minutes * 60))
+            guard !Task.isCancelled else { return }
+            self?.model.isCollapsed = true
+        }
     }
 
     @objc nonisolated private func accessibilityDisplayOptionsChanged() {

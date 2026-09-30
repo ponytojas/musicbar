@@ -21,6 +21,8 @@ final class TrackModel: ObservableObject {
     @Published var progress: PlaybackProgress?
     @Published var isHovering: Bool = false
     @Published var screenActive: Bool = true
+    /// Paused long enough that the menu bar shows only the music note.
+    @Published var isCollapsed: Bool = false
 
     var hasTrack: Bool { !title.isEmpty }
 

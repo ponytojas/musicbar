@@ -11,9 +11,11 @@ struct StatusBarView: View {
         settings.showArtist ? model.displayText : model.title
     }
 
+    private var showsTrack: Bool { model.hasTrack && !model.isCollapsed }
+
     var body: some View {
         HStack(spacing: 6) {
-            if settings.showArtwork, let artwork = model.artwork {
+            if settings.showArtwork, showsTrack, let artwork = model.artwork {
                 // ZStack keeps a single 17 pt slot while the old cover
                 // animates out and the new one in (id swap = new identity).
                 ZStack {
@@ -31,7 +33,7 @@ struct StatusBarView: View {
                 .frame(width: 17, height: 17)
             }
 
-            if model.hasTrack {
+            if showsTrack {
                 if settings.showEqualizer && settings.equalizerPosition == .left {
                     equalizer
                 }
@@ -57,6 +59,7 @@ struct StatusBarView: View {
         .clipped()
         .animation(.spring(duration: 0.4), value: displayText)
         .animation(.spring(duration: 0.4), value: model.isPlaying)
+        .animation(.spring(duration: 0.4), value: model.isCollapsed)
         .animation(.spring(duration: 0.4), value: model.artwork.map(ObjectIdentifier.init))
         .animation(.spring(duration: 0.4), value: settings.showArtwork)
         .animation(.spring(duration: 0.4), value: settings.showEqualizer)

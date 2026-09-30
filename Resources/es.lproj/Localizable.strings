@@ -52,3 +52,10 @@
 /* Player mode */
 "Player" = "Reproductor";
 "Automatic" = "Automático";
+
+/* Collapse when paused */
+"Hide title when paused" = "Ocultar título en pausa";
+"Never" = "Nunca";
+"After 1 minute" = "Tras 1 minuto";
+"After 5 minutes" = "Tras 5 minutos";
+"After 15 minutes" = "Tras 15 minutos";

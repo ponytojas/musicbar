@@ -52,6 +52,10 @@ final class AppSettings: ObservableObject {
     @Published var showArtist: Bool {
         didSet { UserDefaults.standard.set(showArtist, forKey: "showArtist") }
     }
+    /// 0 keeps the title visible while paused.
+    @Published var collapseAfterPauseMinutes: Int {
+        didSet { UserDefaults.standard.set(collapseAfterPauseMinutes, forKey: "collapseAfterPauseMinutes") }
+    }
     @Published var textWidth: Double {
         didSet { UserDefaults.standard.set(textWidth, forKey: "textWidth") }
     }
@@ -90,6 +94,7 @@ final class AppSettings: ObservableObject {
         showArtwork = defaults.bool(forKey: "showArtwork")
         showEqualizer = defaults.bool(forKey: "showEqualizer")
         showArtist = defaults.bool(forKey: "showArtist")
+        collapseAfterPauseMinutes = defaults.integer(forKey: "collapseAfterPauseMinutes")
         textWidth = defaults.double(forKey: "textWidth")
         holdSeconds = defaults.integer(forKey: "holdSeconds")
         equalizerPosition = EqualizerPosition(rawValue: defaults.string(forKey: "equalizerPosition") ?? "") ?? .left
