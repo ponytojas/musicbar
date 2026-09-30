@@ -439,11 +439,14 @@ final class StatusItemController: NSObject {
 
     private func addCurrentTrack(to playlist: Playlist) {
         Task {
-            let added = await music.addCurrentTrack(to: playlist)
-            let format = added
-                ? NSLocalizedString("Added to %@", comment: "")
-                : NSLocalizedString("Couldn't add to %@", comment: "")
-            showPopupNotice(String(format: format, playlist.name))
+            switch await music.addCurrentTrack(to: playlist) {
+            case .added:
+                showPopupNotice(String(format: NSLocalizedString("Added to %@", comment: ""), playlist.name))
+            case .notInLibrary:
+                showPopupNotice(NSLocalizedString("Add the song to your library first", comment: ""))
+            case .failed:
+                showPopupNotice(String(format: NSLocalizedString("Couldn't add to %@", comment: ""), playlist.name))
+            }
         }
     }
 

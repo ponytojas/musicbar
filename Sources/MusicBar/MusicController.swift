@@ -248,16 +248,18 @@ final class MusicController {
         !id.isEmpty && id.allSatisfy(\.isHexDigit)
     }
 
-    /// Returns whether Music added the track. A streamed catalog song is a
-    /// URL track, which Music refuses to duplicate, so this adds the song's
-    /// library copy instead: same persistent ID, else same name, artist, and
-    /// album, else same name and artist. Only with no library copy does it
-    /// try the current track itself.
-    func addCurrentTrack(to playlist: Playlist) async -> Bool {
+    enum PlaylistAddResult { case added, notInLibrary, failed }
+
+    /// A streamed catalog song is a URL track, which Music refuses to
+    /// duplicate into a playlist, so this adds the song's library copy: same
+    /// persistent ID, else same name, artist, and album, else same name and
+    /// artist. With no copy it first adds the song to the library, as Music
+    /// itself does when adding to a playlist.
+    func addCurrentTrack(to playlist: Playlist) async -> PlaylistAddResult {
         guard activePlayer == .appleMusic,
               PlayerApp.appleMusic.isRunning,
               Self.isPersistentID(playlist.id)
-        else { return false }
+        else { return .failed }
         let source = """
         tell application "Music"
             set targetPlaylist to first user playlist whose persistent ID is "\(playlist.id)"
@@ -269,13 +271,24 @@ final class MusicController {
             set matches to (every track of library playlist 1 whose persistent ID is trackID)
             if matches is {} then set matches to (every track of library playlist 1 whose name is trackName and artist is trackArtist and album is trackAlbum)
             if matches is {} then set matches to (every track of library playlist 1 whose name is trackName and artist is trackArtist)
-            if matches is {} then set matches to {sourceTrack}
+            if matches is {} then
+                try
+                    duplicate sourceTrack to library playlist 1
+                end try
+                set matches to (every track of library playlist 1 whose name is trackName and artist is trackArtist)
+            end if
+            if matches is {} then return "notInLibrary"
             duplicate (item 1 of matches) to targetPlaylist
+            return "added"
         end tell
         """
-        let response = await scriptRunner.runCommand(source)
+        let response = await scriptRunner.runString(source)
         recordPermissionFailure(response.errorNumber, for: .appleMusic)
-        return response.errorNumber == nil
+        switch response.value {
+        case "added": return .added
+        case "notInLibrary": return .notInLibrary
+        default: return .failed
+        }
     }
 
     /// Web link to Spotify's current track; Music exposes no shareable URL.

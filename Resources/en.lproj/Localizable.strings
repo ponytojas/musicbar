@@ -79,3 +79,6 @@
 "Add to Playlist" = "Add to Playlist";
 "Added to %@" = "Added to %@";
 "Couldn't add to %@" = "Couldn't add to %@";
+
+/* Hover card playlist errors */
+"Add the song to your library first" = "Add the song to your library first";
