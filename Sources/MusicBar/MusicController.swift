@@ -153,8 +153,20 @@ final class MusicController {
 
     func seek(to position: TimeInterval) { send("set player position to \(position)") }
 
-    /// Both players clamp `sound volume` to 0...100 themselves.
-    func changeVolume(by delta: Int) { send("set sound volume to (sound volume + \(delta))") }
+    /// Returns the new volume. Both players clamp `sound volume` to 0...100.
+    func changeVolume(by delta: Int) async -> Int? {
+        let player = activePlayer
+        guard player.isRunning else { return nil }
+        let source = """
+        tell application "\(player.scriptName)"
+            set sound volume to (sound volume + \(delta))
+            return sound volume as text
+        end tell
+        """
+        let response = await scriptRunner.runString(source)
+        recordPermissionFailure(response.errorNumber, for: player)
+        return response.value.flatMap { Int($0) }
+    }
 
     /// Sends a one-line command to the active player if it's running.
     private func send(_ command: String) {

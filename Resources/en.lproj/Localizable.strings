@@ -82,3 +82,6 @@
 
 /* Hover card playlist errors */
 "Add the song to your library first" = "Add the song to your library first";
+
+/* Volume feedback */
+"Volume %d%%" = "Volume %d%%";

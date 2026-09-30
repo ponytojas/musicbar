@@ -585,7 +585,11 @@ final class StatusItemController: NSObject {
         let steps = Int(scrollAccumulator)
         guard steps != 0 else { return true }
         scrollAccumulator -= CGFloat(steps)
-        music.changeVolume(by: steps * 5)
+        Task {
+            guard let volume = await music.changeVolume(by: steps * 5) else { return }
+            // The card is usually open while the pointer is over the item.
+            showPopupNotice(String(format: NSLocalizedString("Volume %d%%", comment: ""), volume))
+        }
         return true
     }
 
