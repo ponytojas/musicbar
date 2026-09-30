@@ -382,12 +382,21 @@ final class StatusItemController: NSObject {
             let artwork = await self.music.fetchArtwork(title: title, artist: artist)
             guard !Task.isCancelled else { return }
             // The track may have changed while the artwork was loading.
-            if self.lastArtworkKey == key {
-                self.model.artwork = artwork?.thumbnail
+            guard self.lastArtworkKey == key else { return }
+            if let artwork, self.popupWanted {
+                // The card is open or opening: decode its cover first and
+                // publish both together so it never shows the thumbnail.
+                let large = await MusicController.decodeArtwork(from: artwork.encodedData, maxPixelSize: 512)
+                guard !Task.isCancelled, self.lastArtworkKey == key else { return }
+                self.model.artworkLarge = large
+                // Keep the data so a failed decode can retry on the next open.
+                if large == nil { self.artworkSourceData = artwork.encodedData }
+            } else {
                 self.artworkSourceData = artwork?.encodedData
-                // A transient failure may retry on the next reconciliation.
-                if artwork == nil { self.lastArtworkKey = nil }
             }
+            self.model.artwork = artwork?.thumbnail
+            // A transient failure may retry on the next reconciliation.
+            if artwork == nil { self.lastArtworkKey = nil }
         }
     }
 
