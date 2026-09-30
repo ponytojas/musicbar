@@ -106,3 +106,10 @@
 /* Recently played */
 "Recently Played" = "Reproducidas recientemente";
 "Copy title and artist" = "Copiar título y artista";
+
+/* Keyboard shortcuts */
+"Keyboard" = "Teclado";
+"Global shortcuts" = "Atajos globales";
+"⌃⌥⌘M shows the card, ⌃⌥⌘F favorites the song, and ⌃⌥⌘P adds it to a playlist." = "⌃⌥⌘M muestra la tarjeta, ⌃⌥⌘F marca la canción como favorita y ⌃⌥⌘P la añade a una playlist.";
+"Added to Favorites" = "Añadida a favoritas";
+"Removed from Favorites" = "Quitada de favoritas";

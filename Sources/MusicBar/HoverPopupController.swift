@@ -38,6 +38,9 @@ final class HoverPopupController {
     private var cancellables: Set<AnyCancellable> = []
     /// A menu (e.g. the card's playlist menu) is open; keep the card up.
     private var isMenuTracking = false
+    /// Opened from the keyboard: stay up until then regardless of the pointer.
+    private var pinnedUntil: Date?
+    private var pinTask: Task<Void, Never>?
 
     var isShown: Bool { panel?.isVisible ?? false }
 
@@ -93,7 +96,36 @@ final class HoverPopupController {
     func dismiss() {
         showTask?.cancel()
         hideTask?.cancel()
+        pinTask?.cancel()
+        pinnedUntil = nil
         hide()
+    }
+
+    /// Opens the card without hovering, e.g. from a keyboard shortcut. It
+    /// stays up at least `seconds` (and while a notice shows), then follows
+    /// the usual pointer rules.
+    func present(relativeTo button: NSStatusBarButton?, pinnedFor seconds: TimeInterval = 0) {
+        guard model.hasTrack else { return }
+        showTask?.cancel()
+        hideTask?.cancel()
+        pinTask?.cancel()
+        pinnedUntil = nil
+        if seconds > 0 {
+            pinnedUntil = Date().addingTimeInterval(seconds)
+            pinTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(seconds))
+                guard !Task.isCancelled, let self else { return }
+                self.pinnedUntil = nil
+                self.scheduleHideCheck()
+            }
+        }
+        guard !isShown else { return }
+        onWillShow()
+        show(relativeTo: button)
+    }
+
+    func togglePresented(relativeTo button: NSStatusBarButton?) {
+        if isShown { dismiss() } else { present(relativeTo: button, pinnedFor: 5) }
     }
 
     private func show(relativeTo button: NSStatusBarButton?) {
@@ -161,6 +193,7 @@ final class HoverPopupController {
             try? await Task.sleep(for: .milliseconds(300))
             guard let self, !Task.isCancelled,
                   !self.isMenuTracking,
+                  self.pinnedUntil == nil,
                   self.model.popupNotice == nil,
                   !self.pointerIsInside()
             else { return }

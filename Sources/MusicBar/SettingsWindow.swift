@@ -56,6 +56,16 @@ struct SettingsView: View {
                 }
             }
 
+            Section {
+                Toggle("Global shortcuts", isOn: $settings.globalShortcuts)
+            } header: {
+                Text("Keyboard")
+            } footer: {
+                Text("⌃⌥⌘M shows the card, ⌃⌥⌘F favorites the song, and ⌃⌥⌘P adds it to a playlist.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Menu Bar") {
                 Picker("Player", selection: $settings.playerMode) {
                     Text("Automatic").tag(PlayerMode.automatic)

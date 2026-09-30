@@ -59,6 +59,9 @@ final class AppSettings: ObservableObject {
     @Published var lookUpArtworkOnline: Bool {
         didSet { UserDefaults.standard.set(lookUpArtworkOnline, forKey: "lookUpArtworkOnline") }
     }
+    @Published var globalShortcuts: Bool {
+        didSet { UserDefaults.standard.set(globalShortcuts, forKey: "globalShortcuts") }
+    }
     @Published var textWidth: Double {
         didSet { UserDefaults.standard.set(textWidth, forKey: "textWidth") }
     }
@@ -88,6 +91,7 @@ final class AppSettings: ObservableObject {
             "showEqualizer": true,
             "showArtist": true,
             "lookUpArtworkOnline": true,
+            "globalShortcuts": true,
             "textWidth": 150.0,
             "holdSeconds": 10,
             "equalizerPosition": EqualizerPosition.left.rawValue,
@@ -100,6 +104,7 @@ final class AppSettings: ObservableObject {
         showArtist = defaults.bool(forKey: "showArtist")
         collapseAfterPauseMinutes = defaults.integer(forKey: "collapseAfterPauseMinutes")
         lookUpArtworkOnline = defaults.bool(forKey: "lookUpArtworkOnline")
+        globalShortcuts = defaults.bool(forKey: "globalShortcuts")
         textWidth = defaults.double(forKey: "textWidth")
         holdSeconds = defaults.integer(forKey: "holdSeconds")
         equalizerPosition = EqualizerPosition(rawValue: defaults.string(forKey: "equalizerPosition") ?? "") ?? .left

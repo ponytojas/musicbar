@@ -106,3 +106,10 @@
 /* Recently played */
 "Recently Played" = "Recently Played";
 "Copy title and artist" = "Copy title and artist";
+
+/* Keyboard shortcuts */
+"Keyboard" = "Keyboard";
+"Global shortcuts" = "Global shortcuts";
+"⌃⌥⌘M shows the card, ⌃⌥⌘F favorites the song, and ⌃⌥⌘P adds it to a playlist." = "⌃⌥⌘M shows the card, ⌃⌥⌘F favorites the song, and ⌃⌥⌘P adds it to a playlist.";
+"Added to Favorites" = "Added to Favorites";
+"Removed from Favorites" = "Removed from Favorites";

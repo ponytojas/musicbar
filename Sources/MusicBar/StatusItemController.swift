@@ -44,6 +44,8 @@ final class StatusItemController: NSObject {
         self?.loadPopupDetails(includePlaylists: true)
     }
 
+    private lazy var hotKeys = GlobalHotKeys { [weak self] action in self?.handleHotKey(action) }
+
     private var singleClickTimer: Timer?
     private var scrollMonitor: Any?
     private var scrollAccumulator: CGFloat = 0
@@ -179,6 +181,12 @@ final class StatusItemController: NSObject {
             .combineLatest(AppSettings.shared.$collapseAfterPauseMinutes)
             .sink { [weak self] isPlaying, minutes in
                 Task { @MainActor [weak self] in self?.scheduleCollapse(isPlaying: isPlaying, minutes: minutes) }
+            }
+            .store(in: &settingsCancellables)
+        AppSettings.shared.$globalShortcuts
+            .removeDuplicates()
+            .sink { [weak self] enabled in
+                Task { @MainActor [weak self] in self?.hotKeys.setEnabled(enabled) }
             }
             .store(in: &settingsCancellables)
         AppSettings.shared.$playerMode
@@ -478,8 +486,9 @@ final class StatusItemController: NSObject {
     /// The card is open or about to open.
     private var popupWanted: Bool { hoverPopup.isShown || model.isHovering }
 
-    private func addCurrentTrack(to playlist: Playlist) {
+    private func addCurrentTrack(to playlist: Playlist, presentingCard: Bool = false) {
         Task {
+            defer { if presentingCard { hoverPopup.present(relativeTo: statusItem.button) } }
             switch await music.addCurrentTrack(to: playlist) {
             case .added:
                 showPopupNotice(String(format: NSLocalizedString("Added to %@", comment: ""), playlist.name))
@@ -573,6 +582,57 @@ final class StatusItemController: NSObject {
             label = String(format: NSLocalizedString("Paused %@", comment: ""), model.displayText)
         }
         statusItem.button?.setAccessibilityLabel(label)
+    }
+
+    // MARK: - Keyboard shortcuts
+
+    private func handleHotKey(_ action: GlobalHotKeys.Action) {
+        switch action {
+        case .toggleCard: hoverPopup.togglePresented(relativeTo: statusItem.button)
+        case .toggleFavorite: favoriteFromKeyboard()
+        case .addToPlaylist: showPlaylistMenuFromKeyboard()
+        }
+    }
+
+    /// The heart's state may not be loaded yet, so read it before flipping,
+    /// then show the card with the result.
+    private func favoriteFromKeyboard() {
+        guard model.hasTrack else { return }
+        Task {
+            guard let current = await music.fetchFavorited() else { return }
+            model.isFavorited = current
+            toggleFavorite()
+            showPopupNotice(current
+                ? NSLocalizedString("Removed from Favorites", comment: "")
+                : NSLocalizedString("Added to Favorites", comment: ""))
+            hoverPopup.present(relativeTo: statusItem.button)
+        }
+    }
+
+    private func showPlaylistMenuFromKeyboard() {
+        guard model.hasTrack, music.activePlayer == .appleMusic else { return }
+        Task {
+            let playlists = await music.fetchPlaylists()
+            guard !playlists.isEmpty, let button = statusItem.button else { return }
+            let menu = NSMenu()
+            // No action, so it shows as a disabled header.
+            menu.addItem(NSMenuItem(title: NSLocalizedString("Add to Playlist", comment: ""), action: nil, keyEquivalent: ""))
+            for playlist in playlists {
+                let item = NSMenuItem(title: playlist.name, action: #selector(addToPlaylistFromMenu(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = playlist
+                menu.addItem(item)
+            }
+            // Activate so the menu takes arrow keys and Return.
+            NSApp.activate()
+            let below = NSPoint(x: 0, y: button.isFlipped ? button.bounds.maxY + 4 : -4)
+            _ = menu.popUp(positioning: nil, at: below, in: button)
+        }
+    }
+
+    @objc private func addToPlaylistFromMenu(_ sender: NSMenuItem) {
+        guard let playlist = sender.representedObject as? Playlist else { return }
+        addCurrentTrack(to: playlist, presentingCard: true)
     }
 
     // MARK: - Clicks
