@@ -103,7 +103,8 @@ private final class ScriptRunner: @unchecked Sendable {
         }
         let result = script.executeAndReturnError(&error)
         if let error {
-            Logger.musicBar.error("AppleScript error: \(error)")
+            let number = Self.errorNumber(in: error) ?? 0
+            Logger.musicBar.error("AppleScript error \(number, privacy: .public): \(error)")
         }
         return (result, Self.errorNumber(in: error))
     }
