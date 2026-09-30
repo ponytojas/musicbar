@@ -254,8 +254,9 @@ final class MusicController {
     /// A streamed catalog song is a URL track, which Music refuses to
     /// duplicate into a playlist, so this adds the song's library copy: same
     /// persistent ID, else same name, artist, and album, else same name and
-    /// artist. With no copy it first adds the song to the library, as Music
-    /// itself does when adding to a playlist.
+    /// artist. With no copy, the song is favorited just long enough for
+    /// Music to put it in the library (scripting can't add it directly),
+    /// then its favorite state is restored.
     func addCurrentTrack(to playlist: Playlist) async -> PlaylistAddResult {
         guard activePlayer == .appleMusic,
               PlayerApp.appleMusic.isRunning,
@@ -272,14 +273,50 @@ final class MusicController {
             set matches to (every track of library playlist 1 whose persistent ID is trackID)
             if matches is {} then set matches to (every track of library playlist 1 whose name is trackName and artist is trackArtist and album is trackAlbum)
             if matches is {} then set matches to (every track of library playlist 1 whose name is trackName and artist is trackArtist)
+            set didFavorite to false
             if matches is {} then
+                -- Favoriting is the only scripted way to put a streamed song
+                -- in the library (with Music's add-favorites setting on).
                 try
-                    duplicate sourceTrack to library playlist 1
+                    if not (favorited of sourceTrack) then
+                        set favorited of sourceTrack to true
+                        set didFavorite to true
+                    end if
+                on error
+                    try
+                        if not (loved of sourceTrack) then
+                            set loved of sourceTrack to true
+                            set didFavorite to true
+                        end if
+                    end try
                 end try
-                set matches to (every track of library playlist 1 whose name is trackName and artist is trackArtist)
+                -- The library copy appears asynchronously.
+                repeat 20 times
+                    set matches to (every track of library playlist 1 whose name is trackName and artist is trackArtist)
+                    if matches is not {} then exit repeat
+                    delay 0.25
+                end repeat
+            end if
+            set addError to 0
+            if matches is not {} then
+                try
+                    duplicate (item 1 of matches) to targetPlaylist
+                on error number errorNumber
+                    set addError to errorNumber
+                end try
+            end if
+            -- Restore the favorite state even when the add failed.
+            if didFavorite then
+                try
+                    set favorited of sourceTrack to false
+                on error
+                    try
+                        set loved of sourceTrack to false
+                    end try
+                end try
             end if
             if matches is {} then return "notInLibrary"
-            duplicate (item 1 of matches) to targetPlaylist
+            if addError is not 0 then error number addError
             return "added"
         end tell
         """
