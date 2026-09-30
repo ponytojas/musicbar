@@ -8,6 +8,7 @@ struct PopupActions {
     var playPause: @MainActor () -> Void
     var previous: @MainActor () -> Void
     var next: @MainActor () -> Void
+    var toggleFavorite: @MainActor () -> Void
 }
 
 /// Floating "now playing" card shown under the status item while the mouse
@@ -314,7 +315,16 @@ private struct ControlsRow: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            Color.clear.frame(width: 30, height: 30)
+            if let isFavorited = model.isFavorited {
+                ControlButton(
+                    title: isFavorited ? "Remove from Favorites" : "Favorite",
+                    systemImage: isFavorited ? "heart.fill" : "heart",
+                    action: actions.toggleFavorite
+                )
+                .foregroundStyle(isFavorited ? AnyShapeStyle(.pink) : AnyShapeStyle(.secondary))
+            } else {
+                Self.emptySlot
+            }
             Spacer(minLength: 0)
             ControlButton(title: "Previous Track", systemImage: "backward.fill", action: actions.previous)
             ControlButton(
@@ -325,9 +335,12 @@ private struct ControlsRow: View {
             )
             ControlButton(title: "Next Track", systemImage: "forward.fill", action: actions.next)
             Spacer(minLength: 0)
-            Color.clear.frame(width: 30, height: 30)
+            Self.emptySlot
         }
     }
+
+    /// Same footprint as a 13 pt ControlButton.
+    private static var emptySlot: some View { Color.clear.frame(width: 33, height: 30) }
 }
 
 private struct ControlButton: View {

@@ -70,3 +70,7 @@
 "Next Track" = "Next Track";
 "Play" = "Play";
 "Pause" = "Pause";
+
+/* Hover card favorite */
+"Favorite" = "Favorite";
+"Remove from Favorites" = "Remove from Favorites";

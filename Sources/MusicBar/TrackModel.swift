@@ -19,6 +19,8 @@ final class TrackModel: ObservableObject {
     @Published var artworkLarge: NSImage?
     /// Fetched when the hover popup opens; nil otherwise.
     @Published var progress: PlaybackProgress?
+    /// Apple Music favorite state; nil when unknown or unsupported (Spotify).
+    @Published var isFavorited: Bool?
     @Published var isHovering: Bool = false
     @Published var screenActive: Bool = true
     /// Paused long enough that the menu bar shows only the music note.
@@ -44,5 +46,6 @@ final class TrackModel: ObservableObject {
         if artwork != nil { artwork = nil }
         if artworkLarge != nil { artworkLarge = nil }
         if progress != nil { progress = nil }
+        if isFavorited != nil { isFavorited = nil }
     }
 }

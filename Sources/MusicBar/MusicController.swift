@@ -165,24 +165,52 @@ final class MusicController {
         }
     }
 
-    /// Idempotent on purpose: the menu can't show the current state without
-    /// a round trip, so it only ever adds. Newer Music calls it `favorited`,
-    /// older builds `loved`.
-    func favoriteCurrentTrack() {
-        guard activePlayer == .appleMusic, PlayerApp.appleMusic.isRunning else { return }
+    /// Whether Apple Music's current track is a favorite; nil for Spotify,
+    /// which has no scripting support for it. Newer Music calls the property
+    /// `favorited`, older builds `loved`.
+    func fetchFavorited() async -> Bool? {
+        guard activePlayer == .appleMusic,
+              PlayerApp.appleMusic.isRunning,
+              !permissionDeniedPlayers.contains(.appleMusic)
+        else { return nil }
         let source = """
         tell application "Music"
+            if player state is stopped then return ""
             try
-                set favorited of current track to true
+                return favorited of current track as text
             on error
-                set loved of current track to true
+                try
+                    return loved of current track as text
+                on error
+                    return ""
+                end try
             end try
         end tell
         """
-        Task {
-            let response = await scriptRunner.runCommand(source)
-            recordPermissionFailure(response.errorNumber, for: .appleMusic)
+        let response = await scriptRunner.runString(source)
+        recordPermissionFailure(response.errorNumber, for: .appleMusic)
+        switch response.value {
+        case "true": return true
+        case "false": return false
+        default: return nil
         }
+    }
+
+    /// Returns whether Music accepted the change.
+    func setFavorited(_ favorited: Bool) async -> Bool {
+        guard activePlayer == .appleMusic, PlayerApp.appleMusic.isRunning else { return false }
+        let source = """
+        tell application "Music"
+            try
+                set favorited of current track to \(favorited)
+            on error
+                set loved of current track to \(favorited)
+            end try
+        end tell
+        """
+        let response = await scriptRunner.runCommand(source)
+        recordPermissionFailure(response.errorNumber, for: .appleMusic)
+        return response.errorNumber == nil
     }
 
     /// Web link to Spotify's current track; Music exposes no shareable URL.

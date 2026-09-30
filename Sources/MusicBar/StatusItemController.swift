@@ -31,11 +31,12 @@ final class StatusItemController: NSObject {
             next: { [weak self] in
                 self?.music.nextTrack()
                 self?.refreshSoon()
-            }
+            },
+            toggleFavorite: { [weak self] in self?.toggleFavorite() }
         )
     ) { [weak self] in
         self?.loadLargeArtworkIfNeeded()
-        self?.loadProgress()
+        self?.loadPopupDetails()
     }
 
     private var singleClickTimer: Timer?
@@ -322,7 +323,7 @@ final class StatusItemController: NSObject {
         refreshArtworkIfNeeded()
         updateAccessibility()
         // Play/pause or a new track while the popup is open moves the clock.
-        if hoverPopup.isShown { loadProgress() }
+        if hoverPopup.isShown { loadPopupDetails() }
     }
 
     private func refresh() async {
@@ -370,6 +371,7 @@ final class StatusItemController: NSObject {
         artworkSourceData = nil
         model.artwork = nil
         model.artworkLarge = nil
+        model.isFavorited = nil
         lastArtworkKey = key
         let title = model.title
         let artist = model.artist
@@ -406,13 +408,28 @@ final class StatusItemController: NSObject {
         }
     }
 
-    private func loadProgress() {
+    /// Everything the card shows beyond the track itself, fetched when it
+    /// opens and again when the player reports a change while it's open.
+    private func loadPopupDetails() {
         progressTask?.cancel()
         progressTask = Task { @MainActor [weak self] in
             guard let self else { return }
             let progress = await self.music.fetchProgress()
+            let favorited = await self.music.fetchFavorited()
             guard !Task.isCancelled, self.hoverPopup.isShown else { return }
             self.model.progress = progress
+            if self.model.isFavorited != favorited { self.model.isFavorited = favorited }
+        }
+    }
+
+    /// Optimistic: flips the heart at once and reverts if Music refuses.
+    private func toggleFavorite() {
+        let favorited = !(model.isFavorited ?? false)
+        let key = lastArtworkKey
+        model.isFavorited = favorited
+        Task {
+            guard !(await music.setFavorited(favorited)), lastArtworkKey == key else { return }
+            model.isFavorited = !favorited
         }
     }
 
@@ -533,6 +550,7 @@ final class StatusItemController: NSObject {
         if model.hasTrack, music.activePlayer == .appleMusic {
             let favoriteItem = NSMenuItem(title: NSLocalizedString("Favorite Song", comment: ""), action: #selector(favoriteSong), keyEquivalent: "")
             favoriteItem.target = self
+            favoriteItem.state = model.isFavorited == true ? .on : .off
             menu.addItem(favoriteItem)
         }
         if model.hasTrack, music.activePlayer == .spotify {
@@ -559,7 +577,7 @@ final class StatusItemController: NSObject {
     }
 
     @objc private func favoriteSong() {
-        music.favoriteCurrentTrack()
+        toggleFavorite()
     }
 
     @objc private func copySongLink() {
