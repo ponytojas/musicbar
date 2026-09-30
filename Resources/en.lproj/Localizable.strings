@@ -44,3 +44,6 @@
 "Playing %@" = "Playing %@";
 "Paused %@" = "Paused %@";
 "No music playing" = "No music playing";
+
+/* Context menu actions */
+"Favorite Song" = "Favorite Song";

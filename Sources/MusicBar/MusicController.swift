@@ -165,6 +165,26 @@ final class MusicController {
         }
     }
 
+    /// Idempotent on purpose: the menu can't show the current state without
+    /// a round trip, so it only ever adds. Newer Music calls it `favorited`,
+    /// older builds `loved`.
+    func favoriteCurrentTrack() {
+        guard activePlayer == .appleMusic, PlayerApp.appleMusic.isRunning else { return }
+        let source = """
+        tell application "Music"
+            try
+                set favorited of current track to true
+            on error
+                set loved of current track to true
+            end try
+        end tell
+        """
+        Task {
+            let response = await scriptRunner.runCommand(source)
+            recordPermissionFailure(response.errorNumber, for: .appleMusic)
+        }
+    }
+
     func openPlayerApp() {
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: activePlayer.rawValue) else { return }
         NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())

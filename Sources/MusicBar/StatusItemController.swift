@@ -483,6 +483,11 @@ final class StatusItemController: NSObject {
         let openItem = NSMenuItem(title: openTitle, action: #selector(openPlayer), keyEquivalent: "")
         openItem.target = self
         menu.addItem(openItem)
+        if model.hasTrack, music.activePlayer == .appleMusic {
+            let favoriteItem = NSMenuItem(title: NSLocalizedString("Favorite Song", comment: ""), action: #selector(favoriteSong), keyEquivalent: "")
+            favoriteItem.target = self
+            menu.addItem(favoriteItem)
+        }
         menu.addItem(.separator())
         let settingsItem = NSMenuItem(title: NSLocalizedString("Settings…", comment: ""), action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
@@ -499,6 +504,10 @@ final class StatusItemController: NSObject {
         statusItem.menu = menu
         statusItem.button?.performClick(nil)
         statusItem.menu = nil
+    }
+
+    @objc private func favoriteSong() {
+        music.favoriteCurrentTrack()
     }
 
     @objc private func openPlayer() {
