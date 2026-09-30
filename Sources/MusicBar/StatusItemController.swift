@@ -37,7 +37,7 @@ final class StatusItemController: NSObject {
         )
     ) { [weak self] in
         self?.loadLargeArtworkIfNeeded()
-        self?.loadPopupDetails()
+        self?.loadPopupDetails(includePlaylists: true)
     }
 
     private var singleClickTimer: Timer?
@@ -325,7 +325,7 @@ final class StatusItemController: NSObject {
         refreshArtworkIfNeeded()
         updateAccessibility()
         // Play/pause or a new track while the popup is open moves the clock.
-        if hoverPopup.isShown { loadPopupDetails() }
+        if hoverPopup.isShown { loadPopupDetails(includePlaylists: false) }
     }
 
     private func refresh() async {
@@ -410,21 +410,32 @@ final class StatusItemController: NSObject {
         }
     }
 
-    /// Everything the card shows beyond the track itself, fetched when it
-    /// opens and again when the player reports a change while it's open.
-    private func loadPopupDetails() {
+    /// Everything the card shows beyond the track itself. Fetched as soon as
+    /// the pointer lands on the item, so it's usually ready before the card
+    /// appears, and again when the player reports a change while it's open.
+    /// Each piece is published as it arrives; the playlist listing (the
+    /// slowest script) comes last and is only re-read when the card opens.
+    private func loadPopupDetails(includePlaylists: Bool) {
         progressTask?.cancel()
         progressTask = Task { @MainActor [weak self] in
             guard let self else { return }
             let progress = await self.music.fetchProgress()
-            let favorited = await self.music.fetchFavorited()
-            let playlists = await self.music.fetchPlaylists()
-            guard !Task.isCancelled, self.hoverPopup.isShown else { return }
+            guard !Task.isCancelled, self.popupWanted else { return }
             self.model.progress = progress
+
+            let favorited = await self.music.fetchFavorited()
+            guard !Task.isCancelled, self.popupWanted else { return }
             if self.model.isFavorited != favorited { self.model.isFavorited = favorited }
+
+            var playlists = self.music.activePlayer == .appleMusic ? self.model.playlists : []
+            if includePlaylists { playlists = await self.music.fetchPlaylists() }
+            guard !Task.isCancelled, self.popupWanted else { return }
             if self.model.playlists != playlists { self.model.playlists = playlists }
         }
     }
+
+    /// The card is open or about to open.
+    private var popupWanted: Bool { hoverPopup.isShown || model.isHovering }
 
     private func addCurrentTrack(to playlist: Playlist) {
         Task {

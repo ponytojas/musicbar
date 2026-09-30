@@ -75,6 +75,8 @@ final class HoverPopupController {
         guard hovering else { return scheduleHideCheck() }
         hideTask?.cancel()
         guard !isShown, model.hasTrack else { return }
+        // Start loading the card's details during the show delay.
+        onWillShow()
 
         showTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(250))
@@ -92,7 +94,6 @@ final class HoverPopupController {
 
     private func show(relativeTo button: NSStatusBarButton?) {
         guard let button, button.window != nil else { return }
-        onWillShow()
         anchorButton = button
 
         let panel = self.panel ?? makePanel()
