@@ -18,6 +18,12 @@ struct PlaybackModes: Equatable {
     var repeatMode: RepeatMode
 }
 
+struct OutputDevice: Identifiable, Equatable {
+    let id: String
+    let name: String
+    var isSelected: Bool
+}
+
 struct Playlist: Identifiable, Equatable {
     let id: String
     let name: String
@@ -39,6 +45,8 @@ final class TrackModel: ObservableObject {
     @Published var playlists: [Playlist] = []
     /// Shuffle and repeat of the active player; nil until fetched.
     @Published var playbackModes: PlaybackModes?
+    /// Music's available AirPlay outputs; empty for Spotify.
+    @Published var outputDevices: [OutputDevice] = []
     /// Short-lived feedback under the card's controls.
     @Published var popupNotice: String?
     @Published var isHovering: Bool = false

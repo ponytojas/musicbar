@@ -89,3 +89,7 @@
 /* Hover card playback modes */
 "Shuffle" = "Shuffle";
 "Repeat" = "Repeat";
+
+/* Hover card output */
+"Output" = "Output";
+"Couldn't switch to %@" = "Couldn't switch to %@";

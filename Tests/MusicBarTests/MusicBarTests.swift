@@ -105,6 +105,14 @@ final class MusicBarTests: XCTestCase {
         XCTAssertNil(MusicController.parsePlaybackModes("true"))
     }
 
+    func testOutputDeviceParsing() {
+        let devices = MusicController.parseOutputDevices("0000000000000000\ttrue\tMac\n000068CAC4EEA768\tfalse\tAirPods\tPro\nnot-hex\tfalse\tX\n")
+        XCTAssertEqual(devices, [
+            OutputDevice(id: "0000000000000000", name: "Mac", isSelected: true),
+            OutputDevice(id: "000068CAC4EEA768", name: "AirPods\tPro", isSelected: false),
+        ])
+    }
+
     func testHexColorRoundTrip() {
         XCTAssertEqual(Color(hex: "#FF375F").hexString, "#FF375F")
         XCTAssertEqual(Color(hex: "0A0B0C").hexString, "#0A0B0C")

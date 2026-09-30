@@ -13,6 +13,7 @@ struct PopupActions {
     var seek: @MainActor (TimeInterval) -> Void
     var toggleShuffle: @MainActor () -> Void
     var cycleRepeat: @MainActor () -> Void
+    var selectOutput: @MainActor (OutputDevice) -> Void
 }
 
 /// Floating "now playing" card shown under the status item while the mouse
@@ -437,8 +438,32 @@ private struct UtilityRow: View {
                 )
             }
             Spacer(minLength: 0)
+            // Only worth a menu when there's somewhere else to play.
+            if model.outputDevices.count > 1 {
+                outputMenu
+            }
         }
         .frame(height: 22)
+    }
+
+    private var outputMenu: some View {
+        Menu {
+            ForEach(model.outputDevices) { device in
+                Toggle(device.name, isOn: Binding(
+                    get: { device.isSelected },
+                    set: { _ in actions.selectOutput(device) }
+                ))
+            }
+        } label: {
+            Image(systemName: "airplayaudio")
+                .font(.system(size: 11, weight: .semibold))
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .frame(width: 31, height: 22)
+        .foregroundStyle(.secondary)
+        .help(Text("Output"))
+        .accessibilityLabel(Text("Output"))
     }
 }
 

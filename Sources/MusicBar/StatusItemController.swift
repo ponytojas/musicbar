@@ -36,7 +36,8 @@ final class StatusItemController: NSObject {
             addToPlaylist: { [weak self] playlist in self?.addCurrentTrack(to: playlist) },
             seek: { [weak self] position in self?.seek(to: position) },
             toggleShuffle: { [weak self] in self?.toggleShuffle() },
-            cycleRepeat: { [weak self] in self?.cycleRepeat() }
+            cycleRepeat: { [weak self] in self?.cycleRepeat() },
+            selectOutput: { [weak self] device in self?.selectOutput(device) }
         )
     ) { [weak self] in
         self?.loadLargeArtworkIfNeeded()
@@ -443,10 +444,16 @@ final class StatusItemController: NSObject {
             guard !Task.isCancelled, self.popupWanted else { return }
             if self.model.playbackModes != modes { self.model.playbackModes = modes }
 
-            var playlists = self.music.activePlayer == .appleMusic ? self.model.playlists : []
-            if includePlaylists { playlists = await self.music.fetchPlaylists() }
+            let isAppleMusic = self.music.activePlayer == .appleMusic
+            var playlists = isAppleMusic ? self.model.playlists : []
+            var devices = isAppleMusic ? self.model.outputDevices : []
+            if includePlaylists {
+                playlists = await self.music.fetchPlaylists()
+                devices = await self.music.fetchOutputDevices()
+            }
             guard !Task.isCancelled, self.popupWanted else { return }
             if self.model.playlists != playlists { self.model.playlists = playlists }
+            if self.model.outputDevices != devices { self.model.outputDevices = devices }
         }
     }
 
@@ -475,6 +482,17 @@ final class StatusItemController: NSObject {
             try? await Task.sleep(for: .seconds(2))
             guard !Task.isCancelled else { return }
             self?.model.popupNotice = nil
+        }
+    }
+
+    /// Optimistic; restores the list and says so if Music refuses.
+    private func selectOutput(_ device: OutputDevice) {
+        let previous = model.outputDevices
+        model.outputDevices = previous.map { OutputDevice(id: $0.id, name: $0.name, isSelected: $0.id == device.id) }
+        Task {
+            guard !(await music.selectOutput(device)) else { return }
+            model.outputDevices = previous
+            showPopupNotice(String(format: NSLocalizedString("Couldn't switch to %@", comment: ""), device.name))
         }
     }
 

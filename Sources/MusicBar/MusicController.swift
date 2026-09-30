@@ -376,6 +376,47 @@ final class MusicController {
         }
     }
 
+    /// Available AirPlay outputs in Music, this Mac included.
+    func fetchOutputDevices() async -> [OutputDevice] {
+        guard activePlayer == .appleMusic,
+              PlayerApp.appleMusic.isRunning,
+              !permissionDeniedPlayers.contains(.appleMusic)
+        else { return [] }
+        let source = """
+        tell application "Music"
+            set output to ""
+            repeat with airPlayDevice in (every AirPlay device whose available is true)
+                set output to output & (persistent ID of airPlayDevice) & tab & ((selected of airPlayDevice) as text) & tab & (name of airPlayDevice) & linefeed
+            end repeat
+            return output
+        end tell
+        """
+        let response = await scriptRunner.runString(source)
+        recordPermissionFailure(response.errorNumber, for: .appleMusic)
+        return response.value.map(Self.parseOutputDevices) ?? []
+    }
+
+    /// Parses "ID⇥selected⇥name" lines; IDs must be hex like playlist IDs.
+    static func parseOutputDevices(_ text: String) -> [OutputDevice] {
+        text.split(separator: "\n").compactMap { line in
+            let fields = line.split(separator: "\t", maxSplits: 2)
+            guard fields.count == 3, isPersistentID(fields[0]) else { return nil }
+            return OutputDevice(id: String(fields[0]), name: String(fields[2]), isSelected: fields[1] == "true")
+        }
+    }
+
+    /// Makes `device` Music's only output. Returns whether Music accepted it.
+    func selectOutput(_ device: OutputDevice) async -> Bool {
+        guard activePlayer == .appleMusic,
+              PlayerApp.appleMusic.isRunning,
+              Self.isPersistentID(device.id)
+        else { return false }
+        let source = "tell application \"Music\" to set current AirPlay devices to {(first AirPlay device whose persistent ID is \"\(device.id)\")}"
+        let response = await scriptRunner.runCommand(source)
+        recordPermissionFailure(response.errorNumber, for: .appleMusic)
+        return response.errorNumber == nil
+    }
+
     /// Web link to Spotify's current track; Music exposes no shareable URL.
     func spotifyTrackLink() async -> URL? {
         guard activePlayer == .spotify, PlayerApp.spotify.isRunning else { return nil }
