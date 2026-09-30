@@ -394,6 +394,15 @@ final class StatusItemController: NSObject {
             return
         }
 
+        // Shift-click goes back a track, same immediacy as Option-click.
+        if event.modifierFlags.contains(.shift) {
+            singleClickTimer?.invalidate()
+            singleClickTimer = nil
+            music.previousTrack()
+            refreshSoon()
+            return
+        }
+
         switch event.clickCount {
         case 1:
             // Delay so a second click can cancel the play/pause.

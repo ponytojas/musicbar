@@ -139,24 +139,23 @@ final class MusicController {
     }
 
     func playPause() {
-        let player = activePlayer
-        guard player.isRunning else {
+        guard activePlayer.isRunning else {
             openPlayerApp()
             return
         }
-        permissionDeniedPlayers.remove(player)
-        let source = "tell application \"\(player.scriptName)\" to playpause"
-        Task {
-            let response = await scriptRunner.runCommand(source)
-            recordPermissionFailure(response.errorNumber, for: player)
-        }
+        send("playpause")
     }
 
-    func nextTrack() {
+    func nextTrack() { send("next track") }
+
+    func previousTrack() { send("previous track") }
+
+    /// Sends a one-line command to the active player if it's running.
+    private func send(_ command: String) {
         let player = activePlayer
         guard player.isRunning else { return }
         permissionDeniedPlayers.remove(player)
-        let source = "tell application \"\(player.scriptName)\" to next track"
+        let source = "tell application \"\(player.scriptName)\" to \(command)"
         Task {
             let response = await scriptRunner.runCommand(source)
             recordPermissionFailure(response.errorNumber, for: player)
