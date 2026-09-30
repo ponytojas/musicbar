@@ -139,6 +139,16 @@ final class StatusItemController: NSObject {
             .sink { [weak self] _ in
                 Task { @MainActor [weak self] in self?.updateWaveformCapture() }
             }
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(accessibilityDisplayOptionsChanged),
+            name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
+            object: nil
+        )
+    }
+
+    @objc nonisolated private func accessibilityDisplayOptionsChanged() {
+        Task { @MainActor in self.updateWaveformCapture() }
     }
 
     @objc nonisolated private func screenBecameInactive() {
@@ -283,12 +293,14 @@ final class StatusItemController: NSObject {
     }
 
     /// Keep the system-audio tap alive only while its pixels are visible and
-    /// moving. Pausing, hiding the equalizer, or locking the screen tears down
-    /// the aggregate device and its realtime callback.
+    /// moving. Pausing, hiding the equalizer, locking the screen, or turning on
+    /// Reduce Motion (static bars) tears down the aggregate device and its
+    /// realtime callback.
     private func updateWaveformCapture() {
         let shouldCapture = AppSettings.shared.showEqualizer
             && model.isPlaying
             && model.screenActive
+            && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         waveformCapture.capture(shouldCapture ? music.activePlayer : nil)
     }
 
