@@ -74,3 +74,8 @@
 /* Hover card favorite */
 "Favorite" = "Favorite";
 "Remove from Favorites" = "Remove from Favorites";
+
+/* Hover card playlists */
+"Add to Playlist" = "Add to Playlist";
+"Added to %@" = "Added to %@";
+"Couldn't add to %@" = "Couldn't add to %@";

@@ -32,7 +32,8 @@ final class StatusItemController: NSObject {
                 self?.music.nextTrack()
                 self?.refreshSoon()
             },
-            toggleFavorite: { [weak self] in self?.toggleFavorite() }
+            toggleFavorite: { [weak self] in self?.toggleFavorite() },
+            addToPlaylist: { [weak self] playlist in self?.addCurrentTrack(to: playlist) }
         )
     ) { [weak self] in
         self?.loadLargeArtworkIfNeeded()
@@ -49,6 +50,7 @@ final class StatusItemController: NSObject {
     private var largeArtworkTask: Task<Void, Never>?
     private var progressTask: Task<Void, Never>?
     private var collapseTask: Task<Void, Never>?
+    private var noticeTask: Task<Void, Never>?
     private var isRefreshing = false
     /// Post-command reconcile; cancelled when the player's own notification
     /// arrives first so we don't fetch the same state twice.
@@ -416,9 +418,33 @@ final class StatusItemController: NSObject {
             guard let self else { return }
             let progress = await self.music.fetchProgress()
             let favorited = await self.music.fetchFavorited()
+            let playlists = await self.music.fetchPlaylists()
             guard !Task.isCancelled, self.hoverPopup.isShown else { return }
             self.model.progress = progress
             if self.model.isFavorited != favorited { self.model.isFavorited = favorited }
+            if self.model.playlists != playlists { self.model.playlists = playlists }
+        }
+    }
+
+    private func addCurrentTrack(to playlist: Playlist) {
+        Task {
+            let added = await music.addCurrentTrack(to: playlist)
+            let format = added
+                ? NSLocalizedString("Added to %@", comment: "")
+                : NSLocalizedString("Couldn't add to %@", comment: "")
+            showPopupNotice(String(format: format, playlist.name))
+        }
+    }
+
+    /// Shown for two seconds under the card's controls; the card stays open
+    /// meanwhile so the result is visible even after the menu closes.
+    private func showPopupNotice(_ text: String) {
+        noticeTask?.cancel()
+        model.popupNotice = text
+        noticeTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
+            self?.model.popupNotice = nil
         }
     }
 

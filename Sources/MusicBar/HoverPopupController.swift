@@ -9,6 +9,7 @@ struct PopupActions {
     var previous: @MainActor () -> Void
     var next: @MainActor () -> Void
     var toggleFavorite: @MainActor () -> Void
+    var addToPlaylist: @MainActor (Playlist) -> Void
 }
 
 /// Floating "now playing" card shown under the status item while the mouse
@@ -140,13 +141,14 @@ final class HoverPopupController {
 
     /// Hides after a grace period long enough for the pointer to cross the
     /// gap between the status item and the card, unless by then it is back
-    /// over either of them or a menu is open.
+    /// over either of them, a menu is open, or a notice is showing.
     private func scheduleHideCheck() {
         hideTask?.cancel()
         hideTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(300))
             guard let self, !Task.isCancelled,
                   !self.isMenuTracking,
+                  self.model.popupNotice == nil,
                   !self.pointerIsInside()
             else { return }
             self.hide()
@@ -229,6 +231,14 @@ struct HoverPopupView: View {
 
             ControlsRow(model: model, actions: actions)
                 .frame(width: coverSize)
+
+            if let notice = model.popupNotice {
+                Text(notice)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .frame(width: coverSize)
+            }
         }
         .padding(16)
         .background {
@@ -335,8 +345,28 @@ private struct ControlsRow: View {
             )
             ControlButton(title: "Next Track", systemImage: "forward.fill", action: actions.next)
             Spacer(minLength: 0)
-            Self.emptySlot
+            if model.playlists.isEmpty {
+                Self.emptySlot
+            } else {
+                playlistMenu
+            }
         }
+    }
+
+    private var playlistMenu: some View {
+        Menu {
+            ForEach(model.playlists) { playlist in
+                Button(playlist.name) { actions.addToPlaylist(playlist) }
+            }
+        } label: {
+            Image(systemName: "text.badge.plus")
+                .font(.system(size: 13, weight: .semibold))
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .frame(width: 33, height: 30)
+        .help(Text("Add to Playlist"))
+        .accessibilityLabel(Text("Add to Playlist"))
     }
 
     /// Same footprint as a 13 pt ControlButton.

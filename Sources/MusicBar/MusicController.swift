@@ -213,6 +213,54 @@ final class MusicController {
         return response.errorNumber == nil
     }
 
+    /// Regular (non-smart, non-folder) Apple Music playlists; empty for
+    /// Spotify, whose scripting can't reach playlists.
+    func fetchPlaylists() async -> [Playlist] {
+        guard activePlayer == .appleMusic,
+              PlayerApp.appleMusic.isRunning,
+              !permissionDeniedPlayers.contains(.appleMusic)
+        else { return [] }
+        let source = """
+        tell application "Music"
+            set output to ""
+            repeat with aPlaylist in (every user playlist whose smart is false and special kind is none)
+                set output to output & (persistent ID of aPlaylist) & tab & (name of aPlaylist) & linefeed
+            end repeat
+            return output
+        end tell
+        """
+        let response = await scriptRunner.runString(source)
+        recordPermissionFailure(response.errorNumber, for: .appleMusic)
+        return response.value.map(Self.parsePlaylists) ?? []
+    }
+
+    /// Parses "ID⇥name" lines. IDs must be hex because they are later
+    /// interpolated into a script.
+    static func parsePlaylists(_ text: String) -> [Playlist] {
+        text.split(separator: "\n").compactMap { line in
+            let fields = line.split(separator: "\t", maxSplits: 1)
+            guard fields.count == 2, isPersistentID(fields[0]) else { return nil }
+            return Playlist(id: String(fields[0]), name: String(fields[1]))
+        }
+    }
+
+    private static func isPersistentID(_ id: some StringProtocol) -> Bool {
+        !id.isEmpty && id.allSatisfy(\.isHexDigit)
+    }
+
+    /// Returns whether Music added the track. Catalog tracks that aren't in
+    /// the library often can't be added by script.
+    func addCurrentTrack(to playlist: Playlist) async -> Bool {
+        guard activePlayer == .appleMusic,
+              PlayerApp.appleMusic.isRunning,
+              Self.isPersistentID(playlist.id)
+        else { return false }
+        let source = "tell application \"Music\" to duplicate current track to (first user playlist whose persistent ID is \"\(playlist.id)\")"
+        let response = await scriptRunner.runCommand(source)
+        recordPermissionFailure(response.errorNumber, for: .appleMusic)
+        return response.errorNumber == nil
+    }
+
     /// Web link to Spotify's current track; Music exposes no shareable URL.
     func spotifyTrackLink() async -> URL? {
         guard activePlayer == .spotify, PlayerApp.spotify.isRunning else { return nil }

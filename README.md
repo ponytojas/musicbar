@@ -15,7 +15,7 @@ Requires macOS 14 or later.
 | Option-click | Next track |
 | Shift-click | Previous track |
 | Scroll | Change the player's volume |
-| Hover | Now-playing card with cover, title, artist, and progress |
+| Hover | Now-playing card with cover, title, artist, progress, and controls: previous, play/pause, next, plus favorite and add to playlist for Apple Music |
 | Right click | Menu: Open Music/Spotify, Favorite Song (Apple Music), Copy Song Link (Spotify), Settings, About, Quit |
 
 ## Features

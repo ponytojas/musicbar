@@ -90,6 +90,14 @@ final class MusicBarTests: XCTestCase {
         XCTAssertNil(MusicController.spotifyWebURL(fromURI: ""))
     }
 
+    func testPlaylistParsingRejectsNonHexIDs() {
+        let playlists = MusicController.parsePlaylists("0A1B2C\tRoad Trip\nnot-hex\tBad\n3D4E\tTabs\tInside\n")
+        XCTAssertEqual(playlists, [
+            Playlist(id: "0A1B2C", name: "Road Trip"),
+            Playlist(id: "3D4E", name: "Tabs\tInside"),
+        ])
+    }
+
     func testHexColorRoundTrip() {
         XCTAssertEqual(Color(hex: "#FF375F").hexString, "#FF375F")
         XCTAssertEqual(Color(hex: "0A0B0C").hexString, "#0A0B0C")

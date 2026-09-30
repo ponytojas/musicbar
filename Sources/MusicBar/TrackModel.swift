@@ -9,6 +9,11 @@ struct PlaybackProgress: Equatable {
     var end: Date { start.addingTimeInterval(duration) }
 }
 
+struct Playlist: Identifiable, Equatable {
+    let id: String
+    let name: String
+}
+
 @MainActor
 final class TrackModel: ObservableObject {
     @Published var title: String = ""
@@ -21,6 +26,10 @@ final class TrackModel: ObservableObject {
     @Published var progress: PlaybackProgress?
     /// Apple Music favorite state; nil when unknown or unsupported (Spotify).
     @Published var isFavorited: Bool?
+    /// Apple Music playlists the card can add to; empty for Spotify.
+    @Published var playlists: [Playlist] = []
+    /// Short-lived feedback under the card's controls.
+    @Published var popupNotice: String?
     @Published var isHovering: Bool = false
     @Published var screenActive: Bool = true
     /// Paused long enough that the menu bar shows only the music note.
