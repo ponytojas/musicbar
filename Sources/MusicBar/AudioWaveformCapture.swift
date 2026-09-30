@@ -91,7 +91,7 @@ final class AudioWaveformCapture: @unchecked Sendable {
     private var aggregateDeviceID = AudioObjectID(kAudioObjectUnknown)
     private var deviceProcID: AudioDeviceIOProcID?
 
-    // audioQueue-only after the tap starts.
+    // audioQueue-only.
     private var lastPublishNanoseconds: UInt64 = 0
 
     init(
@@ -210,7 +210,6 @@ final class AudioWaveformCapture: @unchecked Sendable {
         aggregateDeviceID = kAudioObjectUnknown
         processTapID = kAudioObjectUnknown
         capturedPlayer = nil
-        lastPublishNanoseconds = 0
         onStopped()
     }
 
