@@ -15,8 +15,11 @@ Requires macOS 14 or later.
 | Option-click | Next track |
 | Shift-click | Previous track |
 | Scroll | Change the player's volume |
-| Hover | Now-playing card with cover, title, artist, progress, and controls: previous, play/pause, next, plus favorite and add to playlist for Apple Music |
-| Right click | Menu: Open Music/Spotify, Favorite Song (Apple Music), Copy Song Link (Spotify), Settings, About, Quit |
+| Hover | Now-playing card with cover, title, artist, and a progress bar you can click to seek. Controls: previous, play/pause, next, shuffle, repeat; for Apple Music also favorite, add to playlist, and AirPlay output |
+| Right click | Menu: Open Music/Spotify, Favorite Song and Show in Music (Apple Music), Copy Song Link (Spotify), Recently Played, Sleep Timer, Settings, About, Quit |
+| ⌃⌥⌘M | Show or hide the card |
+| ⌃⌥⌘F | Favorite or unfavorite the song (Apple Music) |
+| ⌃⌥⌘P | Add the song to a playlist (Apple Music) |
 
 ## Features
 
@@ -24,7 +27,9 @@ Requires macOS 14 or later.
 - Album cover thumbnail with a real waveform derived from Apple Music or Spotify's audio and frozen low while paused. Its color can use a gradient extracted from the current cover, one chosen color, or smoothly changing random colors. A music note appears when nothing is queued.
 - Track title and artist shown in a fixed 150 pt width. Longer text holds for 10 seconds (or scrolls immediately on mouse hover), scrolls right to left to reveal the rest, then eases back and repeats.
 - Slide and fade transitions on track change.
-- Settings window with launch at login, player choice (automatic, Apple Music only, Spotify only), artwork/equalizer/artist toggles, hiding the title after a long pause, title width, auto-scroll delay, and the online artwork lookup.
+- Scrolling over the item shows the new volume in the card.
+- Optional notification when the song changes, handy while the menu bar is hidden in full screen.
+- Settings window with launch at login, global shortcuts, song-change notifications, player choice (automatic, Apple Music only, Spotify only), artwork/equalizer/artist toggles, hiding the title after a long pause, title width, auto-scroll delay, and the online artwork lookup.
 - First-run explainer for the Automation permission, with a shortcut to System Settings if the permission was denied.
 - VoiceOver label announces the current track and play state.
 - Localized in English and Spanish.
