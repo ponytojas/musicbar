@@ -192,3 +192,9 @@
 "Sensitivity" = "Sensitivity";
 "Low" = "Low";
 "High" = "High";
+
+/* More shortcut actions */
+"Volume up" = "Volume up";
+"Volume down" = "Volume down";
+"Skip forward 10 seconds" = "Skip forward 10 seconds";
+"Skip back 10 seconds" = "Skip back 10 seconds";

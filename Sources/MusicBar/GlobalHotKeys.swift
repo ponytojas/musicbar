@@ -85,9 +85,13 @@ struct Shortcut: Codable, Equatable, Sendable {
 }
 
 /// Things a global shortcut can do. The first three ship with a shortcut;
-/// the transport ones start unassigned since the media keys cover them.
+/// the rest start unassigned, since the media keys cover most of them.
 enum HotKeyAction: String, CaseIterable, Sendable {
     case toggleCard, toggleFavorite, addToPlaylist, playPause, nextTrack, previousTrack
+    case volumeUp, volumeDown, seekForward, seekBackward
+
+    /// How far the seek shortcuts jump.
+    static let seekSeconds = 10
 
     /// Carbon identifies hot keys by number.
     var id: UInt32 { UInt32(Self.allCases.firstIndex(of: self)! + 1) }
@@ -105,6 +109,10 @@ enum HotKeyAction: String, CaseIterable, Sendable {
         case .playPause: NSLocalizedString("Play or pause", comment: "")
         case .nextTrack: NSLocalizedString("Next Track", comment: "")
         case .previousTrack: NSLocalizedString("Previous Track", comment: "")
+        case .volumeUp: NSLocalizedString("Volume up", comment: "")
+        case .volumeDown: NSLocalizedString("Volume down", comment: "")
+        case .seekForward: NSLocalizedString("Skip forward 10 seconds", comment: "")
+        case .seekBackward: NSLocalizedString("Skip back 10 seconds", comment: "")
         }
     }
 

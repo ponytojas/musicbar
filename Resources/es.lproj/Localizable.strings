@@ -192,3 +192,9 @@
 "Sensitivity" = "Sensibilidad";
 "Low" = "Baja";
 "High" = "Alta";
+
+/* More shortcut actions */
+"Volume up" = "Subir volumen";
+"Volume down" = "Bajar volumen";
+"Skip forward 10 seconds" = "Avanzar 10 segundos";
+"Skip back 10 seconds" = "Retroceder 10 segundos";

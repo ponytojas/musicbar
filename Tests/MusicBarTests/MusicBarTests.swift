@@ -462,6 +462,10 @@ final class MusicBarTests: XCTestCase {
         for action in HotKeyAction.allCases {
             XCTAssertEqual(HotKeyAction(id: action.id), action)
         }
+        // Only the original three ship with a shortcut; none collide.
+        XCTAssertEqual(Set(HotKeyAction.defaultShortcuts.keys), [.toggleCard, .toggleFavorite, .addToPlaylist])
+        XCTAssertEqual(Set(HotKeyAction.defaultShortcuts.values.map(\.displayText)).count, 3)
+        XCTAssertTrue(HotKeyAction.allCases.allSatisfy { !$0.title.isEmpty })
         XCTAssertNil(HotKeyAction(id: 0))
         XCTAssertNil(HotKeyAction(id: UInt32(HotKeyAction.allCases.count + 1)))
     }

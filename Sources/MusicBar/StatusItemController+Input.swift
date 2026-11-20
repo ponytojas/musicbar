@@ -23,7 +23,19 @@ extension StatusItemController {
         case .playPause: togglePlayback()
         case .nextTrack: skip(forward: true)
         case .previousTrack: skip(forward: false)
+        case .volumeUp: changeVolume(by: 5)
+        case .volumeDown: changeVolume(by: -5)
+        case .seekForward: seek(by: HotKeyAction.seekSeconds)
+        case .seekBackward: seek(by: -HotKeyAction.seekSeconds)
         }
+    }
+
+    /// Jumps within the song. The scripts run in order, so an open card
+    /// reads the position after the jump.
+    func seek(by seconds: Int) {
+        guard model.hasTrack else { return }
+        music.seek(by: seconds)
+        if hoverPopup.isShown { loadPopupDetails(includePlaylists: false) }
     }
 
     func showPlaylistMenuFromKeyboard() {

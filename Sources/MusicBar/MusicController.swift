@@ -242,6 +242,9 @@ final class MusicController {
 
     func seek(to position: TimeInterval) { send("set player position to \(position)") }
 
+    /// Relative seek; both players clamp the result to the song.
+    func seek(by seconds: Int) { send("set player position to (player position + (\(seconds)))") }
+
     /// Whether a player's notification should take over the menu bar. A
     /// paused or idle player must not displace the one that is playing.
     static func shouldAdopt(
