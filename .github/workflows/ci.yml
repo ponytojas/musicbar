@@ -5,10 +5,19 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # build.sh reads the version from the latest tag.
+          fetch-depth: 0
       - run: swift build
       - run: swift test
+      # The app bundle is assembled by hand, so make sure that still works.
+      - run: ./build.sh
+      - run: codesign --verify --strict build/MusicBar.app

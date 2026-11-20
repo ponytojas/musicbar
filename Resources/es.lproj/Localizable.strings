@@ -5,7 +5,6 @@
 "Menu Bar" = "Barra de menús";
 "Show album artwork" = "Mostrar carátula del álbum";
 "Show equalizer" = "Mostrar ecualizador";
-"Show artist name" = "Mostrar nombre del artista";
 "Equalizer" = "Ecualizador";
 "Position" = "Posición";
 "Left of title" = "A la izquierda del título";
@@ -15,14 +14,11 @@
 "Fixed color" = "Color fijo";
 "Random colors" = "Colores aleatorios";
 "Custom color" = "Color personalizado";
-"Title width" = "Ancho del título";
 "Auto-scroll after" = "Desplazar tras";
 "5 seconds" = "5 segundos";
 "10 seconds" = "10 segundos";
 "20 seconds" = "20 segundos";
 "30 seconds" = "30 segundos";
-"Long titles always start scrolling when you hover the menu bar item." = "Los títulos largos siempre empiezan a desplazarse al pasar el cursor por el elemento de la barra de menús.";
-"MusicBar Settings" = "Ajustes de MusicBar";
 
 /* Menu */
 "Open Music" = "Abrir Música";
@@ -108,12 +104,187 @@
 "Copy title and artist" = "Copiar título y artista";
 
 /* Keyboard shortcuts */
-"Keyboard" = "Teclado";
 "Global shortcuts" = "Atajos globales";
-"⌃⌥⌘M shows the card, ⌃⌥⌘F favorites the song, and ⌃⌥⌘P adds it to a playlist." = "⌃⌥⌘M muestra la tarjeta, ⌃⌥⌘F marca la canción como favorita y ⌃⌥⌘P la añade a una playlist.";
 "Added to Favorites" = "Añadida a favoritas";
 "Removed from Favorites" = "Quitada de favoritas";
 
 /* Notifications */
 "Notifications" = "Notificaciones";
 "Notify when the song changes" = "Avisar cuando cambie la canción";
+
+/* Settings tabs and sections */
+"General" = "General";
+"Shortcuts" = "Atajos";
+"Show" = "Mostrar";
+"Title" = "Título";
+"Pointer" = "Puntero";
+"Updates" = "Actualizaciones";
+"Version" = "Versión";
+"Style" = "Estilo";
+
+/* Menu bar settings */
+"Show title" = "Mostrar título";
+"Shrink to fit short titles" = "Ajustar a los títulos cortos";
+"Maximum title width" = "Ancho máximo del título";
+"%lld pt" = "%lld pt";
+"Long titles scroll on their own while music plays, and whenever you hover the menu bar item." = "Los títulos largos se desplazan solos mientras suena la música, y siempre que pasas el cursor por el elemento de la barra de menús.";
+"Show the card on hover" = "Mostrar la tarjeta al pasar el cursor";
+"Scroll to change the volume" = "Cambiar el volumen con el scroll";
+"Double-click opens the player" = "El doble clic abre el reproductor";
+"With double-click on, a single click waits a moment before it plays or pauses, to tell the two apart." = "Con el doble clic activado, un clic simple espera un instante antes de reproducir o pausar, para distinguirlos.";
+
+/* Equalizer styles */
+"Frequency bands" = "Bandas de frecuencia";
+"Loudness" = "Volumen del sonido";
+"Simulated" = "Simulado";
+"Bass on the left, treble on the right, from the player's own audio." = "Graves a la izquierda y agudos a la derecha, a partir del audio del reproductor.";
+"How loud the player's audio is, moment to moment." = "Lo fuerte que suena el audio del reproductor en cada instante.";
+"Decorative movement. MusicBar doesn't listen to any audio, so macOS asks for no recording permission." = "Movimiento decorativo. MusicBar no escucha ningún audio, así que macOS no pide permiso de grabación.";
+"Equalizer Is Simulated…" = "El ecualizador es simulado…";
+"The equalizer is showing simulated movement" = "El ecualizador muestra un movimiento simulado";
+"MusicBar couldn't listen to the player's audio. Allow it under System Audio Recording Only in Privacy & Security, or choose the Simulated style in Settings to stop it trying." = "MusicBar no ha podido escuchar el audio del reproductor. Permítelo en «Solo grabación de audio del sistema», dentro de Privacidad y seguridad, o elige el estilo Simulado en Ajustes para que deje de intentarlo.";
+
+/* Shortcut recorder */
+"Show or hide the card" = "Mostrar u ocultar la tarjeta";
+"Favorite the song" = "Marcar la canción como favorita";
+"Add the song to a playlist" = "Añadir la canción a una playlist";
+"Play or pause" = "Reproducir o pausar";
+"Press shortcut…" = "Pulsa el atajo…";
+"None" = "Ninguno";
+"Another app is already using this shortcut." = "Otra app ya usa este atajo.";
+"Click a shortcut, then press the new keys with ⌃, ⌥ or ⌘. Delete clears it and Esc cancels." = "Haz clic en un atajo y pulsa las teclas nuevas con ⌃, ⌥ o ⌘. Suprimir lo borra y Esc cancela.";
+
+/* Notification settings */
+"Notifications are turned off for MusicBar in System Settings." = "Las notificaciones de MusicBar están desactivadas en Ajustes del Sistema.";
+"Open Notification Settings" = "Abrir ajustes de notificaciones";
+
+/* Updates */
+"Check for updates automatically" = "Buscar actualizaciones automáticamente";
+"Asks GitHub for the latest release once a day. You can also check from the menu." = "Pregunta a GitHub por la última versión una vez al día. También puedes buscarla desde el menú.";
+"Check for Updates…" = "Buscar actualizaciones…";
+"Update Available: %@…" = "Actualización disponible: %@…";
+"MusicBar %@ is available" = "MusicBar %@ está disponible";
+"MusicBar is up to date" = "MusicBar está al día";
+"You have version %@." = "Tienes la versión %@.";
+"Open Download Page" = "Abrir página de descarga";
+"Couldn't check for updates" = "No se pudo buscar actualizaciones";
+
+/* Context menu additions */
+"Allow MusicBar to Control %@…" = "Permitir que MusicBar controle %@…";
+"MusicBar needs permission to control the player" = "MusicBar necesita permiso para controlar el reproductor";
+"Clear Recently Played" = "Borrar reproducidas recientemente";
+"Play again" = "Reproducir de nuevo";
+"Copied title and artist" = "Título y artista copiados";
+"Link copied" = "Enlace copiado";
+"When the Song Ends" = "Al terminar la canción";
+"Show Menu" = "Mostrar menú";
+
+/* Card volume */
+"Volume" = "Volumen";
+
+/* Main menu */
+"Window" = "Ventana";
+"Close" = "Cerrar";
+
+/* Equalizer sensitivity */
+"Sensitivity" = "Sensibilidad";
+"Low" = "Baja";
+"High" = "Alta";
+
+/* More shortcut actions */
+"Volume up" = "Subir volumen";
+"Volume down" = "Bajar volumen";
+"Skip forward 10 seconds" = "Avanzar 10 segundos";
+"Skip back 10 seconds" = "Retroceder 10 segundos";
+
+/* Hide without a player */
+"Hide when no player is open" = "Ocultar si no hay ningún reproductor abierto";
+"While it's hidden, open MusicBar again from Finder or Spotlight to get back to these settings." = "Mientras esté oculto, vuelve a abrir MusicBar desde el Finder o Spotlight para llegar a estos ajustes.";
+
+/* Welcome */
+"Welcome to MusicBar" = "Te damos la bienvenida a MusicBar";
+"MusicBar lives in your menu bar" = "MusicBar vive en tu barra de menús";
+"It shows what Apple Music or Spotify is playing. Here is what the item does:" = "Muestra lo que suena en Apple Music o Spotify. Esto es lo que hace el elemento:";
+"Click to play or pause." = "Haz clic para reproducir o pausar.";
+"Option-click for the next track, Shift-click for the previous one." = "Opción-clic para la pista siguiente, Mayúsculas-clic para la anterior.";
+"Scroll over it to change the player's volume." = "Haz scroll encima para cambiar el volumen del reproductor.";
+"Hover for the card: seek, shuffle, repeat, favorite, playlists." = "Pasa el cursor para ver la tarjeta: posición, aleatorio, repetir, favorita, playlists.";
+"Right-click for the menu: recently played, sleep timer, settings." = "Clic derecho para el menú: reproducidas recientemente, temporizador, ajustes.";
+"%@ shows the card from anywhere, ready for the keyboard." = "%@ muestra la tarjeta desde cualquier sitio, lista para el teclado.";
+"Open Settings" = "Abrir Ajustes";
+"Got It" = "Entendido";
+"Tips…" = "Consejos…";
+
+/* Text format */
+"Text" = "Texto";
+"Text size" = "Tamaño del texto";
+"Custom" = "Personalizado";
+"Template" = "Plantilla";
+"Use {title}, {artist} and {album}." = "Usa {title}, {artist} y {album}.";
+"Use {title}, {artist} and {album} in the template. Long titles scroll on their own while music plays, and whenever you hover the menu bar item." = "Usa {title}, {artist} y {album} en la plantilla. Los títulos largos se desplazan solos mientras suena la música, y siempre que pasas el cursor por el elemento de la barra de menús.";
+"Artist" = "Artista";
+"Album" = "Álbum";
+"Edit" = "Edición";
+"Undo" = "Deshacer";
+"Cut" = "Cortar";
+"Copy" = "Copiar";
+"Paste" = "Pegar";
+"Select All" = "Seleccionar todo";
+
+/* Sleep timer options */
+"Custom…" = "Personalizado…";
+"Fade Out Before Pausing" = "Bajar el volumen antes de pausar";
+"Pause after how many minutes?" = "¿Pausar tras cuántos minutos?";
+"Start" = "Empezar";
+"Cancel" = "Cancelar";
+
+/* Play a playlist */
+"Play Playlist" = "Reproducir playlist";
+"Couldn't play %@" = "No se pudo reproducir %@";
+
+/* Rating */
+"Rating" = "Valoración";
+"No Rating" = "Sin valoración";
+"%d stars" = "%d estrellas";
+"Dislike Song" = "No me gusta";
+"Couldn't rate this song" = "No se pudo valorar esta canción";
+"Rating removed" = "Valoración eliminada";
+"Marked as disliked" = "Marcada como «no me gusta»";
+"No longer disliked" = "Ya no está marcada como «no me gusta»";
+
+/* Song link */
+"Couldn't find a link for this song" = "No se encontró un enlace para esta canción";
+
+/* Support */
+"Support" = "Soporte";
+"Copy Diagnostics" = "Copiar diagnóstico";
+"Copied" = "Copiado";
+"Reset All Settings…" = "Restablecer todos los ajustes…";
+"Reset all settings to their defaults?" = "¿Restablecer todos los ajustes a sus valores por defecto?";
+"Reset" = "Restablecer";
+"Diagnostics describe your setup for a bug report. They never include what you listen to." = "El diagnóstico describe tu configuración para un informe de errores. Nunca incluye lo que escuchas.";
+
+/* Listening history */
+"History" = "Historial";
+"Keep listening history" = "Guardar historial de escucha";
+"Period" = "Periodo";
+"Last 7 days" = "Últimos 7 días";
+"Last 30 days" = "Últimos 30 días";
+"All time" = "Desde siempre";
+"Songs played" = "Canciones escuchadas";
+"Kept only on this Mac. A song counts once it has played for 30 seconds." = "Se guarda solo en este Mac. Una canción cuenta cuando ha sonado 30 segundos.";
+"Top Songs" = "Canciones más escuchadas";
+"Top Artists" = "Artistas más escuchados";
+"Nothing yet" = "Todavía nada";
+"Clear History…" = "Borrar historial…";
+"Delete the whole listening history?" = "¿Borrar todo el historial de escucha?";
+"Delete" = "Borrar";
+
+/* Menu bar progress */
+"Progress" = "Progreso";
+"Line under the title" = "Línea bajo el título";
+"Time remaining" = "Tiempo restante";
+
+/* Pinned card */
+"Keep Card Open" = "Mantener la tarjeta abierta";
+"Unpin Card" = "Soltar la tarjeta";

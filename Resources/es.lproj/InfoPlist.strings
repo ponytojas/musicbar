@@ -1,0 +1,3 @@
+/* Shown by macOS in its permission prompts. */
+"NSAppleEventsUsageDescription" = "MusicBar controla Apple Music y Spotify para mostrar y gestionar la pista actual.";
+"NSAudioCaptureUsageDescription" = "MusicBar analiza el audio de Apple Music y Spotify para mostrar un ecualizador en vivo. El audio nunca se graba ni se guarda.";

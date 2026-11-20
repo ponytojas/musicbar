@@ -5,7 +5,6 @@
 "Menu Bar" = "Menu Bar";
 "Show album artwork" = "Show album artwork";
 "Show equalizer" = "Show equalizer";
-"Show artist name" = "Show artist name";
 "Equalizer" = "Equalizer";
 "Position" = "Position";
 "Left of title" = "Left of title";
@@ -15,14 +14,11 @@
 "Fixed color" = "Fixed color";
 "Random colors" = "Random colors";
 "Custom color" = "Custom color";
-"Title width" = "Title width";
 "Auto-scroll after" = "Auto-scroll after";
 "5 seconds" = "5 seconds";
 "10 seconds" = "10 seconds";
 "20 seconds" = "20 seconds";
 "30 seconds" = "30 seconds";
-"Long titles always start scrolling when you hover the menu bar item." = "Long titles always start scrolling when you hover the menu bar item.";
-"MusicBar Settings" = "MusicBar Settings";
 
 /* Menu */
 "Open Music" = "Open Music";
@@ -108,12 +104,187 @@
 "Copy title and artist" = "Copy title and artist";
 
 /* Keyboard shortcuts */
-"Keyboard" = "Keyboard";
 "Global shortcuts" = "Global shortcuts";
-"⌃⌥⌘M shows the card, ⌃⌥⌘F favorites the song, and ⌃⌥⌘P adds it to a playlist." = "⌃⌥⌘M shows the card, ⌃⌥⌘F favorites the song, and ⌃⌥⌘P adds it to a playlist.";
 "Added to Favorites" = "Added to Favorites";
 "Removed from Favorites" = "Removed from Favorites";
 
 /* Notifications */
 "Notifications" = "Notifications";
 "Notify when the song changes" = "Notify when the song changes";
+
+/* Settings tabs and sections */
+"General" = "General";
+"Shortcuts" = "Shortcuts";
+"Show" = "Show";
+"Title" = "Title";
+"Pointer" = "Pointer";
+"Updates" = "Updates";
+"Version" = "Version";
+"Style" = "Style";
+
+/* Menu bar settings */
+"Show title" = "Show title";
+"Shrink to fit short titles" = "Shrink to fit short titles";
+"Maximum title width" = "Maximum title width";
+"%lld pt" = "%lld pt";
+"Long titles scroll on their own while music plays, and whenever you hover the menu bar item." = "Long titles scroll on their own while music plays, and whenever you hover the menu bar item.";
+"Show the card on hover" = "Show the card on hover";
+"Scroll to change the volume" = "Scroll to change the volume";
+"Double-click opens the player" = "Double-click opens the player";
+"With double-click on, a single click waits a moment before it plays or pauses, to tell the two apart." = "With double-click on, a single click waits a moment before it plays or pauses, to tell the two apart.";
+
+/* Equalizer styles */
+"Frequency bands" = "Frequency bands";
+"Loudness" = "Loudness";
+"Simulated" = "Simulated";
+"Bass on the left, treble on the right, from the player's own audio." = "Bass on the left, treble on the right, from the player's own audio.";
+"How loud the player's audio is, moment to moment." = "How loud the player's audio is, moment to moment.";
+"Decorative movement. MusicBar doesn't listen to any audio, so macOS asks for no recording permission." = "Decorative movement. MusicBar doesn't listen to any audio, so macOS asks for no recording permission.";
+"Equalizer Is Simulated…" = "Equalizer Is Simulated…";
+"The equalizer is showing simulated movement" = "The equalizer is showing simulated movement";
+"MusicBar couldn't listen to the player's audio. Allow it under System Audio Recording Only in Privacy & Security, or choose the Simulated style in Settings to stop it trying." = "MusicBar couldn't listen to the player's audio. Allow it under System Audio Recording Only in Privacy & Security, or choose the Simulated style in Settings to stop it trying.";
+
+/* Shortcut recorder */
+"Show or hide the card" = "Show or hide the card";
+"Favorite the song" = "Favorite the song";
+"Add the song to a playlist" = "Add the song to a playlist";
+"Play or pause" = "Play or pause";
+"Press shortcut…" = "Press shortcut…";
+"None" = "None";
+"Another app is already using this shortcut." = "Another app is already using this shortcut.";
+"Click a shortcut, then press the new keys with ⌃, ⌥ or ⌘. Delete clears it and Esc cancels." = "Click a shortcut, then press the new keys with ⌃, ⌥ or ⌘. Delete clears it and Esc cancels.";
+
+/* Notification settings */
+"Notifications are turned off for MusicBar in System Settings." = "Notifications are turned off for MusicBar in System Settings.";
+"Open Notification Settings" = "Open Notification Settings";
+
+/* Updates */
+"Check for updates automatically" = "Check for updates automatically";
+"Asks GitHub for the latest release once a day. You can also check from the menu." = "Asks GitHub for the latest release once a day. You can also check from the menu.";
+"Check for Updates…" = "Check for Updates…";
+"Update Available: %@…" = "Update Available: %@…";
+"MusicBar %@ is available" = "MusicBar %@ is available";
+"MusicBar is up to date" = "MusicBar is up to date";
+"You have version %@." = "You have version %@.";
+"Open Download Page" = "Open Download Page";
+"Couldn't check for updates" = "Couldn't check for updates";
+
+/* Context menu additions */
+"Allow MusicBar to Control %@…" = "Allow MusicBar to Control %@…";
+"MusicBar needs permission to control the player" = "MusicBar needs permission to control the player";
+"Clear Recently Played" = "Clear Recently Played";
+"Play again" = "Play again";
+"Copied title and artist" = "Copied title and artist";
+"Link copied" = "Link copied";
+"When the Song Ends" = "When the Song Ends";
+"Show Menu" = "Show Menu";
+
+/* Card volume */
+"Volume" = "Volume";
+
+/* Main menu */
+"Window" = "Window";
+"Close" = "Close";
+
+/* Equalizer sensitivity */
+"Sensitivity" = "Sensitivity";
+"Low" = "Low";
+"High" = "High";
+
+/* More shortcut actions */
+"Volume up" = "Volume up";
+"Volume down" = "Volume down";
+"Skip forward 10 seconds" = "Skip forward 10 seconds";
+"Skip back 10 seconds" = "Skip back 10 seconds";
+
+/* Hide without a player */
+"Hide when no player is open" = "Hide when no player is open";
+"While it's hidden, open MusicBar again from Finder or Spotlight to get back to these settings." = "While it's hidden, open MusicBar again from Finder or Spotlight to get back to these settings.";
+
+/* Welcome */
+"Welcome to MusicBar" = "Welcome to MusicBar";
+"MusicBar lives in your menu bar" = "MusicBar lives in your menu bar";
+"It shows what Apple Music or Spotify is playing. Here is what the item does:" = "It shows what Apple Music or Spotify is playing. Here is what the item does:";
+"Click to play or pause." = "Click to play or pause.";
+"Option-click for the next track, Shift-click for the previous one." = "Option-click for the next track, Shift-click for the previous one.";
+"Scroll over it to change the player's volume." = "Scroll over it to change the player's volume.";
+"Hover for the card: seek, shuffle, repeat, favorite, playlists." = "Hover for the card: seek, shuffle, repeat, favorite, playlists.";
+"Right-click for the menu: recently played, sleep timer, settings." = "Right-click for the menu: recently played, sleep timer, settings.";
+"%@ shows the card from anywhere, ready for the keyboard." = "%@ shows the card from anywhere, ready for the keyboard.";
+"Open Settings" = "Open Settings";
+"Got It" = "Got It";
+"Tips…" = "Tips…";
+
+/* Text format */
+"Text" = "Text";
+"Text size" = "Text size";
+"Custom" = "Custom";
+"Template" = "Template";
+"Use {title}, {artist} and {album}." = "Use {title}, {artist} and {album}.";
+"Use {title}, {artist} and {album} in the template. Long titles scroll on their own while music plays, and whenever you hover the menu bar item." = "Use {title}, {artist} and {album} in the template. Long titles scroll on their own while music plays, and whenever you hover the menu bar item.";
+"Artist" = "Artist";
+"Album" = "Album";
+"Edit" = "Edit";
+"Undo" = "Undo";
+"Cut" = "Cut";
+"Copy" = "Copy";
+"Paste" = "Paste";
+"Select All" = "Select All";
+
+/* Sleep timer options */
+"Custom…" = "Custom…";
+"Fade Out Before Pausing" = "Fade Out Before Pausing";
+"Pause after how many minutes?" = "Pause after how many minutes?";
+"Start" = "Start";
+"Cancel" = "Cancel";
+
+/* Play a playlist */
+"Play Playlist" = "Play Playlist";
+"Couldn't play %@" = "Couldn't play %@";
+
+/* Rating */
+"Rating" = "Rating";
+"No Rating" = "No Rating";
+"%d stars" = "%d stars";
+"Dislike Song" = "Dislike Song";
+"Couldn't rate this song" = "Couldn't rate this song";
+"Rating removed" = "Rating removed";
+"Marked as disliked" = "Marked as disliked";
+"No longer disliked" = "No longer disliked";
+
+/* Song link */
+"Couldn't find a link for this song" = "Couldn't find a link for this song";
+
+/* Support */
+"Support" = "Support";
+"Copy Diagnostics" = "Copy Diagnostics";
+"Copied" = "Copied";
+"Reset All Settings…" = "Reset All Settings…";
+"Reset all settings to their defaults?" = "Reset all settings to their defaults?";
+"Reset" = "Reset";
+"Diagnostics describe your setup for a bug report. They never include what you listen to." = "Diagnostics describe your setup for a bug report. They never include what you listen to.";
+
+/* Listening history */
+"History" = "History";
+"Keep listening history" = "Keep listening history";
+"Period" = "Period";
+"Last 7 days" = "Last 7 days";
+"Last 30 days" = "Last 30 days";
+"All time" = "All time";
+"Songs played" = "Songs played";
+"Kept only on this Mac. A song counts once it has played for 30 seconds." = "Kept only on this Mac. A song counts once it has played for 30 seconds.";
+"Top Songs" = "Top Songs";
+"Top Artists" = "Top Artists";
+"Nothing yet" = "Nothing yet";
+"Clear History…" = "Clear History…";
+"Delete the whole listening history?" = "Delete the whole listening history?";
+"Delete" = "Delete";
+
+/* Menu bar progress */
+"Progress" = "Progress";
+"Line under the title" = "Line under the title";
+"Time remaining" = "Time remaining";
+
+/* Pinned card */
+"Keep Card Open" = "Keep Card Open";
+"Unpin Card" = "Unpin Card";

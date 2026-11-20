@@ -7,6 +7,37 @@ struct PlaybackProgress: Equatable {
     let duration: TimeInterval
     let start: Date
     var end: Date { start.addingTimeInterval(duration) }
+
+    /// Seconds into the song at `now`. While playing the clock runs from
+    /// `start`; paused, it stays where it was read.
+    func position(at now: Date, isPlaying: Bool) -> TimeInterval {
+        guard isPlaying else { return position }
+        return min(duration, max(0, now.timeIntervalSince(start)))
+    }
+
+    func fraction(at now: Date, isPlaying: Bool) -> Double {
+        duration > 0 ? position(at: now, isPlaying: isPlaying) / duration : 0
+    }
+
+    func remaining(at now: Date, isPlaying: Bool) -> TimeInterval {
+        duration - position(at: now, isPlaying: isPlaying)
+    }
+}
+
+/// How far into the song playback is, for the menu bar. Kept apart from
+/// `TrackModel` because it changes every second: only the small views
+/// that draw it should redraw.
+@MainActor
+final class MenuBarProgressModel: ObservableObject {
+    /// 0...1; nil when unknown (nothing queued, radio, or not loaded yet).
+    @Published var fraction: Double?
+    /// Seconds left in the song.
+    @Published var remaining: TimeInterval?
+
+    /// "-2:31", the way players show time left.
+    static func remainingLabel(_ seconds: TimeInterval) -> String {
+        "-" + Duration.seconds(max(0, seconds.rounded())).formatted(.time(pattern: .minuteSecond))
+    }
 }
 
 enum RepeatMode: String {
@@ -18,6 +49,14 @@ struct PlaybackModes: Equatable {
     var repeatMode: RepeatMode
 }
 
+/// Apple Music's star rating and "dislike" mark for a song.
+struct TrackRating: Equatable, Sendable {
+    /// 0 (unrated) through 5.
+    var stars: Int
+    /// nil on versions of Music without the property.
+    var isDisliked: Bool?
+}
+
 struct OutputDevice: Identifiable, Equatable {
     let id: String
     let name: String
@@ -27,15 +66,57 @@ struct OutputDevice: Identifiable, Equatable {
 struct RecentTrack: Codable, Equatable {
     let title: String
     let artist: String
+    /// Bundle identifier of the player it was heard on; nil in histories
+    /// saved before songs could be replayed.
+    var player: String?
+    /// Music persistent ID or Spotify URI, when the player reported one.
+    var trackID: String?
 
     var displayText: String { artist.isEmpty ? title : "\(title) — \(artist)" }
+
+    /// Same song, whichever player or ID it carries.
+    func isSameSong(as other: RecentTrack) -> Bool {
+        title == other.title && artist == other.artist
+    }
 
     static let limit = 10
 
     /// Newest first, without duplicates, capped at `limit`.
     static func adding(_ track: RecentTrack, to history: [RecentTrack]) -> [RecentTrack] {
-        Array(([track] + history.filter { $0 != track }).prefix(limit))
+        Array(([track] + history.filter { !$0.isSameSong(as: track) }).prefix(limit))
     }
+}
+
+/// Which song is on display, for telling a new song from more news about
+/// the same one.
+struct TrackIdentity: Equatable {
+    let player: PlayerApp
+    let title: String
+    let artist: String
+    let album: String
+
+    /// nil without a title: nothing is queued.
+    init?(player: PlayerApp, title: String, artist: String, album: String) {
+        guard !title.isEmpty else { return nil }
+        self.player = player
+        self.title = title
+        self.artist = artist
+        self.album = album
+    }
+
+    /// The album tells two versions of a song apart, so they don't share a
+    /// cover or favorite state. A missing album matches any: the players'
+    /// notifications and their scripts don't always both report one, and
+    /// that must not look like a new song.
+    func isSameSong(as other: TrackIdentity) -> Bool {
+        player == other.player
+            && title == other.title
+            && artist == other.artist
+            && (album == other.album || album.isEmpty || other.album.isEmpty)
+    }
+
+    /// Stable text for comparing across suspension points.
+    var key: String { [player.rawValue, title, artist, album].joined(separator: "|") }
 }
 
 struct Playlist: Identifiable, Equatable {
@@ -47,6 +128,7 @@ struct Playlist: Identifiable, Equatable {
 final class TrackModel: ObservableObject {
     @Published var title: String = ""
     @Published var artist: String = ""
+    @Published var album: String = ""
     @Published var isPlaying: Bool = false
     @Published var artwork: NSImage?
     /// Popup-sized decode of the same cover; `artwork` stays menu-bar small.
@@ -55,10 +137,14 @@ final class TrackModel: ObservableObject {
     @Published var progress: PlaybackProgress?
     /// Apple Music favorite state; nil when unknown or unsupported (Spotify).
     @Published var isFavorited: Bool?
+    /// Apple Music rating; nil when unknown or unsupported (Spotify).
+    @Published var rating: TrackRating?
     /// Apple Music playlists the card can add to; empty for Spotify.
     @Published var playlists: [Playlist] = []
     /// Shuffle and repeat of the active player; nil until fetched.
     @Published var playbackModes: PlaybackModes?
+    /// The active player's own volume, 0...100; nil until fetched.
+    @Published var volume: Int?
     /// Music's available AirPlay outputs; empty for Spotify.
     @Published var outputDevices: [OutputDevice] = []
     /// Short-lived feedback under the card's controls.
@@ -67,6 +153,10 @@ final class TrackModel: ObservableObject {
     @Published var screenActive: Bool = true
     /// Paused long enough that the menu bar shows only the music note.
     @Published var isCollapsed: Bool = false
+    /// The card is pinned open as a mini player.
+    @Published var isCardPinned: Bool = false
+    /// A sleep timer is counting down; the menu bar shows a small moon.
+    @Published var sleepTimerActive: Bool = false
 
     var hasTrack: Bool { !title.isEmpty }
 
@@ -74,20 +164,27 @@ final class TrackModel: ObservableObject {
         artist.isEmpty ? title : "\(title) — \(artist)"
     }
 
+    /// Second line of the card: artist and album, whichever exist.
+    var artistAndAlbum: String {
+        [artist, album].filter { !$0.isEmpty }.joined(separator: " — ")
+    }
+
     /// Assigns only what changed — @Published fires objectWillChange even for
     /// identical values, and the periodic reconcile usually re-reports the
     /// same state.
-    func update(title: String, artist: String, isPlaying: Bool) {
+    func update(title: String, artist: String, album: String, isPlaying: Bool) {
         if self.title != title { self.title = title }
         if self.artist != artist { self.artist = artist }
+        if self.album != album { self.album = album }
         if self.isPlaying != isPlaying { self.isPlaying = isPlaying }
     }
 
     func clear() {
-        update(title: "", artist: "", isPlaying: false)
+        update(title: "", artist: "", album: "", isPlaying: false)
         if artwork != nil { artwork = nil }
         if artworkLarge != nil { artworkLarge = nil }
         if progress != nil { progress = nil }
         if isFavorited != nil { isFavorited = nil }
+        if rating != nil { rating = nil }
     }
 }
