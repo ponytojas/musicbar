@@ -72,10 +72,12 @@ final class ViewSmokeTests: XCTestCase {
     func testMenuBarItemGivesBackRoomForShortTitles() throws {
         try XCTSkipUnless(AppSettings.shared.fitTitleToContent && AppSettings.shared.showTitle)
         let waveform = AudioWaveformModel()
-        let short = fittingSize(of: StatusBarView(model: sampleModel(title: "Hi"), waveform: waveform))
+        let progress = MenuBarProgressModel()
+        let short = fittingSize(of: StatusBarView(model: sampleModel(title: "Hi"), waveform: waveform, progress: progress))
         let long = fittingSize(of: StatusBarView(
             model: sampleModel(title: "A title far too long to fit in the menu bar at any width"),
-            waveform: waveform
+            waveform: waveform,
+            progress: progress
         ))
         XCTAssertLessThan(short.width, long.width)
         // The long one stops at the configured width plus its fixed parts.

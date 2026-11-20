@@ -17,6 +17,15 @@ enum PlayerMode: String, CaseIterable {
     }
 }
 
+/// Playback position shown in the menu bar item.
+enum MenuBarProgressStyle: String, CaseIterable {
+    case none
+    /// A thin line along the bottom of the item.
+    case line
+    /// Time left in the song, after the title.
+    case remaining
+}
+
 /// What the bars show.
 enum EqualizerStyle: String, CaseIterable {
     /// Frequency bands of the player's audio, bass on the left.
@@ -80,6 +89,9 @@ final class AppSettings: ObservableObject {
     /// Short titles take only the room they need instead of `textWidth`.
     @Published var fitTitleToContent: Bool = AppSettings.stored("fitTitleToContent", true) {
         didSet { Self.save(fitTitleToContent, "fitTitleToContent") }
+    }
+    @Published var menuBarProgress: MenuBarProgressStyle = AppSettings.storedEnum("menuBarProgress", .none) {
+        didSet { Self.save(menuBarProgress.rawValue, "menuBarProgress") }
     }
     /// Removes the item from the menu bar while no allowed player is open.
     @Published var hideWhenNoPlayer: Bool = AppSettings.stored("hideWhenNoPlayer", false) {
@@ -183,6 +195,7 @@ final class AppSettings: ObservableObject {
         titleFontSize = fresh.titleFontSize
         fitTitleToContent = fresh.fitTitleToContent
         hideWhenNoPlayer = fresh.hideWhenNoPlayer
+        menuBarProgress = fresh.menuBarProgress
         collapseAfterPauseMinutes = fresh.collapseAfterPauseMinutes
         lookUpArtworkOnline = fresh.lookUpArtworkOnline
         keepListeningHistory = fresh.keepListeningHistory

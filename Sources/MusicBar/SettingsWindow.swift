@@ -237,6 +237,11 @@ struct MenuBarSettings: View {
             Section {
                 Toggle("Show album artwork", isOn: $settings.showArtwork)
                 Toggle("Show title", isOn: $settings.showTitle)
+                Picker("Progress", selection: $settings.menuBarProgress) {
+                    Text("None").tag(MenuBarProgressStyle.none)
+                    Text("Line under the title").tag(MenuBarProgressStyle.line)
+                    Text("Time remaining").tag(MenuBarProgressStyle.remaining)
+                }
                 Toggle("Hide when no player is open", isOn: $settings.hideWhenNoPlayer)
             } header: {
                 Text("Show")

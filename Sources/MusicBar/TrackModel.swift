@@ -7,6 +7,37 @@ struct PlaybackProgress: Equatable {
     let duration: TimeInterval
     let start: Date
     var end: Date { start.addingTimeInterval(duration) }
+
+    /// Seconds into the song at `now`. While playing the clock runs from
+    /// `start`; paused, it stays where it was read.
+    func position(at now: Date, isPlaying: Bool) -> TimeInterval {
+        guard isPlaying else { return position }
+        return min(duration, max(0, now.timeIntervalSince(start)))
+    }
+
+    func fraction(at now: Date, isPlaying: Bool) -> Double {
+        duration > 0 ? position(at: now, isPlaying: isPlaying) / duration : 0
+    }
+
+    func remaining(at now: Date, isPlaying: Bool) -> TimeInterval {
+        duration - position(at: now, isPlaying: isPlaying)
+    }
+}
+
+/// How far into the song playback is, for the menu bar. Kept apart from
+/// `TrackModel` because it changes every second: only the small views
+/// that draw it should redraw.
+@MainActor
+final class MenuBarProgressModel: ObservableObject {
+    /// 0...1; nil when unknown (nothing queued, radio, or not loaded yet).
+    @Published var fraction: Double?
+    /// Seconds left in the song.
+    @Published var remaining: TimeInterval?
+
+    /// "-2:31", the way players show time left.
+    static func remainingLabel(_ seconds: TimeInterval) -> String {
+        "-" + Duration.seconds(max(0, seconds.rounded())).formatted(.time(pattern: .minuteSecond))
+    }
 }
 
 enum RepeatMode: String {

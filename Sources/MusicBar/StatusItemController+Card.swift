@@ -110,6 +110,7 @@ extension StatusItemController {
     /// Optimistic: moves the bar at once instead of waiting for a reload.
     func seek(to position: TimeInterval) {
         music.seek(to: position)
+        loadMenuBarProgress()
         guard let progress = model.progress else { return }
         model.progress = PlaybackProgress(
             position: position,

@@ -35,6 +35,7 @@ extension StatusItemController {
     func seek(by seconds: Int) {
         guard model.hasTrack else { return }
         music.seek(by: seconds)
+        loadMenuBarProgress()
         if hoverPopup.isShown { loadPopupDetails(includePlaylists: false) }
     }
 

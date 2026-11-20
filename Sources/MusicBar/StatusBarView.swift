@@ -5,6 +5,9 @@ import SwiftUI
 struct StatusBarView: View {
     @ObservedObject var model: TrackModel
     let waveform: AudioWaveformModel
+    /// Passed down unobserved: it changes every second, and only the two
+    /// small views that draw it should redraw.
+    let progress: MenuBarProgressModel
     @ObservedObject var settings = AppSettings.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -81,6 +84,10 @@ struct StatusBarView: View {
                 }
             }
 
+            if settings.menuBarProgress == .remaining, !showsNote {
+                RemainingTime(progress: progress)
+            }
+
             if model.sleepTimerActive {
                 Image(systemName: "moon.zzz.fill")
                     .font(.system(size: 9, weight: .semibold))
@@ -91,8 +98,17 @@ struct StatusBarView: View {
         .padding(.leading, 12)
         .padding(.trailing, 8)
         .frame(height: 22)
+        .overlay(alignment: .bottom) {
+            if settings.menuBarProgress == .line, !showsNote {
+                ProgressLine(progress: progress)
+                    .padding(.leading, 12)
+                    .padding(.trailing, 8)
+                    .padding(.bottom, 1)
+            }
+        }
         .clipped()
         .animation(change, value: displayText)
+        .animation(change, value: settings.menuBarProgress)
         .animation(change, value: model.isPlaying)
         .animation(change, value: model.isCollapsed)
         .animation(change, value: model.sleepTimerActive)
@@ -114,6 +130,39 @@ struct StatusBarView: View {
             colorMode: settings.equalizerColorMode,
             customColor: settings.equalizerColor
         )
+    }
+}
+
+/// A hairline along the bottom of the item, filled up to the playback
+/// position. Invisible until a position is known.
+private struct ProgressLine: View {
+    @ObservedObject var progress: MenuBarProgressModel
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                Capsule().fill(.primary.opacity(0.18))
+                Capsule()
+                    .fill(.primary.opacity(0.75))
+                    .frame(width: geometry.size.width * (progress.fraction ?? 0))
+            }
+        }
+        .frame(height: 1.5)
+        .opacity(progress.fraction == nil ? 0 : 1)
+        .accessibilityHidden(true)
+    }
+}
+
+/// Time left in the song, after the title.
+private struct RemainingTime: View {
+    @ObservedObject var progress: MenuBarProgressModel
+
+    var body: some View {
+        if let remaining = progress.remaining {
+            Text(verbatim: MenuBarProgressModel.remainingLabel(remaining))
+                .font(.system(size: 10, weight: .medium).monospacedDigit())
+                .foregroundStyle(.secondary)
+        }
     }
 }
 

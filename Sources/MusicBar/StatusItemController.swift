@@ -14,6 +14,7 @@ final class StatusItemController: NSObject {
     let settingsWindow = SettingsWindowController()
     lazy var welcomeWindow = WelcomeWindowController { [weak self] in self?.settingsWindow.show() }
     private let waveformModel = AudioWaveformModel()
+    private let progressModel = MenuBarProgressModel()
     private let notifier = TrackNotifier()
     private lazy var waveformCapture = AudioWaveformCapture(
         onLevels: { [weak self] levels in
@@ -60,6 +61,10 @@ final class StatusItemController: NSObject {
     var scrollAccumulator: CGFloat = 0
     private var refreshTimer: Timer?
     private var simulationTimer: Timer?
+    /// The last position read for the menu bar's progress display.
+    private var menuBarProgress: PlaybackProgress?
+    private var menuBarProgressTask: Task<Void, Never>?
+    private var menuBarProgressTimer: Timer?
     /// The song on display; nil with nothing queued.
     private var currentTrack: TrackIdentity?
     /// That song's key, fixed when it started: what in-flight work compares
@@ -166,7 +171,9 @@ final class StatusItemController: NSObject {
             },
         ])
 
-        let hosting = HoverTrackingHostingView(rootView: StatusBarView(model: model, waveform: waveformModel))
+        let hosting = HoverTrackingHostingView(
+            rootView: StatusBarView(model: model, waveform: waveformModel, progress: progressModel)
+        )
         hosting.passesClicksThrough = true
         hosting.onHoverChange = { [weak self] hovering in
             guard let self else { return }
@@ -292,6 +299,12 @@ final class StatusItemController: NSObject {
                 Task { @MainActor [weak self] in await self?.refresh() }
             }
             .store(in: &settingsCancellables)
+        settings.$menuBarProgress
+            .removeDuplicates()
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in self?.loadMenuBarProgress() }
+            }
+            .store(in: &settingsCancellables)
         settings.$hideWhenNoPlayer
             .combineLatest(settings.$playerMode)
             .sink { [weak self] _ in
@@ -336,6 +349,7 @@ final class StatusItemController: NSObject {
         Task { @MainActor in
             self.model.screenActive = false
             self.updateWaveformCapture()
+            self.updateMenuBarProgressTimer()
         }
     }
 
@@ -466,6 +480,7 @@ final class StatusItemController: NSObject {
                 updateWaveformCapture()
                 trackDidUpdate()
                 updateAccessibility()
+                loadMenuBarProgress()
             }
         } while refreshRequested
         didInitialSync = true
@@ -493,6 +508,7 @@ final class StatusItemController: NSObject {
         trackDidUpdate()
         updateAccessibility()
         preloadPlaylistsIfNeeded()
+        loadMenuBarProgress()
     }
 
     /// The menu is built on the spot and can't wait for a script, so the
@@ -569,6 +585,50 @@ final class StatusItemController: NSObject {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.recordPlayIfListened() }
         }
+    }
+
+    // MARK: - Menu bar progress
+
+    /// Reads where playback is, for the progress line or time left. Called
+    /// on every play, pause and track change; in between, a one-second
+    /// timer moves the display along on its own.
+    func loadMenuBarProgress() {
+        menuBarProgressTask?.cancel()
+        guard AppSettings.shared.menuBarProgress != .none, model.hasTrack else {
+            menuBarProgress = nil
+            publishMenuBarProgress()
+            updateMenuBarProgressTimer()
+            return
+        }
+        menuBarProgressTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            let progress = await self.music.fetchProgress()
+            guard !Task.isCancelled else { return }
+            self.menuBarProgress = progress
+            self.publishMenuBarProgress()
+            self.updateMenuBarProgressTimer()
+        }
+    }
+
+    private func publishMenuBarProgress() {
+        let now = Date()
+        let fraction = menuBarProgress?.fraction(at: now, isPlaying: model.isPlaying)
+        let remaining = menuBarProgress?.remaining(at: now, isPlaying: model.isPlaying)
+        if progressModel.fraction != fraction { progressModel.fraction = fraction }
+        if progressModel.remaining != remaining { progressModel.remaining = remaining }
+    }
+
+    /// Ticks only while the display is actually moving and can be seen.
+    private func updateMenuBarProgressTimer() {
+        let ticking = menuBarProgress != nil && model.isPlaying && model.screenActive
+        guard ticking != (menuBarProgressTimer != nil) else { return }
+        menuBarProgressTimer?.invalidate()
+        menuBarProgressTimer = nil
+        guard ticking else { return }
+        menuBarProgressTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.publishMenuBarProgress() }
+        }
+        menuBarProgressTimer?.tolerance = 0.2
     }
 
     // MARK: - Equalizer

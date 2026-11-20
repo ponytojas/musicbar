@@ -496,6 +496,26 @@ final class MusicBarTests: XCTestCase {
         XCTAssertEqual(MarqueeText.width(of: "Some title"), MarqueeText.width(of: "Some title", fontSize: 12))
     }
 
+    func testPlaybackPositionRunsOnlyWhilePlaying() {
+        let read = Date(timeIntervalSinceReferenceDate: 5_000)
+        let progress = PlaybackProgress(position: 60, duration: 200, start: read.addingTimeInterval(-60))
+        let later = read.addingTimeInterval(40)
+
+        XCTAssertEqual(progress.position(at: later, isPlaying: true), 100)
+        XCTAssertEqual(progress.fraction(at: later, isPlaying: true), 0.5, accuracy: 0.0001)
+        XCTAssertEqual(progress.remaining(at: later, isPlaying: true), 100)
+        // Paused, it stays where it was read.
+        XCTAssertEqual(progress.position(at: later, isPlaying: false), 60)
+        XCTAssertEqual(progress.fraction(at: later, isPlaying: false), 0.3, accuracy: 0.0001)
+        // Never past the end, even if the next song's news is late.
+        XCTAssertEqual(progress.fraction(at: read.addingTimeInterval(900), isPlaying: true), 1)
+        XCTAssertEqual(progress.remaining(at: read.addingTimeInterval(900), isPlaying: true), 0)
+
+        XCTAssertEqual(MenuBarProgressModel.remainingLabel(151), "-2:31")
+        XCTAssertEqual(MenuBarProgressModel.remainingLabel(0.2), "-0:00")
+        XCTAssertEqual(MenuBarProgressModel.remainingLabel(-4), "-0:00")
+    }
+
     func testSeekFractionClampsToTheBar() {
         XCTAssertEqual(HoverPopupView.seekFraction(x: 42, width: 168), 0.25, accuracy: 0.0001)
         XCTAssertEqual(HoverPopupView.seekFraction(x: -20, width: 168), 0)

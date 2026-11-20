@@ -280,3 +280,8 @@
 "Clear History…" = "Clear History…";
 "Delete the whole listening history?" = "Delete the whole listening history?";
 "Delete" = "Delete";
+
+/* Menu bar progress */
+"Progress" = "Progress";
+"Line under the title" = "Line under the title";
+"Time remaining" = "Time remaining";
