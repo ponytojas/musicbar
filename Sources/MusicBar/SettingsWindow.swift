@@ -243,6 +243,17 @@ struct EqualizerSettings: View {
                     Text("Simulated").tag(EqualizerStyle.simulated)
                 }
                 .disabled(!settings.showEqualizer)
+                LabeledContent("Sensitivity") {
+                    Slider(value: $settings.equalizerSensitivity, in: 0.5...2, step: 0.1) {
+                        EmptyView()
+                    } minimumValueLabel: {
+                        Text("Low").font(.caption).foregroundStyle(.secondary)
+                    } maximumValueLabel: {
+                        Text("High").font(.caption).foregroundStyle(.secondary)
+                    }
+                    .frame(width: 220)
+                }
+                .disabled(!settings.showEqualizer)
             } footer: {
                 Footnote(styleNote)
             }

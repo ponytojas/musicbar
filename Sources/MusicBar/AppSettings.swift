@@ -108,6 +108,11 @@ final class AppSettings: ObservableObject {
     @Published var equalizerStyle: EqualizerStyle = AppSettings.storedEnum("equalizerStyle", .spectrum) {
         didSet { Self.save(equalizerStyle.rawValue, "equalizerStyle") }
     }
+    /// Multiplies the bar heights: below 1 calms them, above 1 lifts quiet
+    /// music.
+    @Published var equalizerSensitivity: Double = AppSettings.stored("equalizerSensitivity", 1.0) {
+        didSet { Self.save(equalizerSensitivity, "equalizerSensitivity") }
+    }
     @Published var equalizerColorMode = EqualizerColorMode(
         storedValue: AppSettings.stored("equalizerColorMode", EqualizerColorMode.gradient.rawValue)
     ) {

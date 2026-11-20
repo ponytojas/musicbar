@@ -187,3 +187,8 @@
 /* Main menu */
 "Window" = "Ventana";
 "Close" = "Cerrar";
+
+/* Equalizer sensitivity */
+"Sensitivity" = "Sensibilidad";
+"Low" = "Baja";
+"High" = "Alta";

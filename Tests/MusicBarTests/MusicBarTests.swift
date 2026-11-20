@@ -350,6 +350,19 @@ final class MusicBarTests: XCTestCase {
         }
     }
 
+    func testSensitivityScalesBarsWithinRange() {
+        XCTAssertEqual(WaveformMath.scaled(0.4, by: 1), 0.4, accuracy: 0.0001)
+        XCTAssertEqual(WaveformMath.scaled(0.4, by: 2), 0.8, accuracy: 0.0001)
+        XCTAssertEqual(WaveformMath.scaled(0.4, by: 0.5), 0.2, accuracy: 0.0001)
+        XCTAssertEqual(WaveformMath.scaled(0.8, by: 2), 1)
+
+        let model = AudioWaveformModel()
+        model.sensitivity = 2
+        let quiet = Array(repeating: CGFloat(0.3), count: AudioWaveformModel.barCount)
+        for _ in 0..<40 { model.ingest(quiet) }
+        XCTAssertEqual(model.levels[0], 0.6, accuracy: 0.02)
+    }
+
     func testSlidingSampleWindow() {
         var window: [Float] = [1, 2, 3, 4]
         WaveformMath.slide(&window, appending: [5, 6])

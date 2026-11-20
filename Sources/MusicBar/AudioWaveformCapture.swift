@@ -19,6 +19,8 @@ final class AudioWaveformModel {
     static let barCount = waveformBarCount
 
     private(set) var levels = Array(repeating: CGFloat(0.08), count: barCount)
+    /// The user's sensitivity setting; see `WaveformMath.scaled`.
+    var sensitivity: CGFloat = 1
     private weak var consumer: (any AudioWaveformConsumer)?
 
     func connect(_ consumer: any AudioWaveformConsumer) {
@@ -31,7 +33,7 @@ final class AudioWaveformModel {
         var nextLevels = levels
         var changed = false
         for index in levels.indices {
-            let target = incoming[index]
+            let target = WaveformMath.scaled(incoming[index], by: sensitivity)
             let response: CGFloat = target > levels[index] ? 0.72 : 0.28
             let next = levels[index] + (target - levels[index]) * response
             if abs(next - levels[index]) > 0.006 {
@@ -104,6 +106,11 @@ enum WaveformMath {
             let tilt = Float(pow(10, 3 * octavesUp / 20))
             return normalizedLevel(rms: rms * tilt)
         }
+    }
+
+    /// A level taller or shorter by the sensitivity setting, kept in 0...1.
+    static func scaled(_ level: CGFloat, by sensitivity: CGFloat) -> CGFloat {
+        min(1, max(0, level * sensitivity))
     }
 
     /// Slides `window` forward to end with `samples`, keeping its length.

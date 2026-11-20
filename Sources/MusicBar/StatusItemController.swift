@@ -253,6 +253,11 @@ final class StatusItemController: NSObject {
                 Task { @MainActor [weak self] in self?.updateWaveformCapture() }
             }
             .store(in: &settingsCancellables)
+        settings.$equalizerSensitivity
+            .sink { [weak self] sensitivity in
+                Task { @MainActor [weak self] in self?.waveformModel.sensitivity = CGFloat(sensitivity) }
+            }
+            .store(in: &settingsCancellables)
         model.$isPlaying
             .combineLatest(settings.$collapseAfterPauseMinutes)
             .sink { [weak self] isPlaying, minutes in

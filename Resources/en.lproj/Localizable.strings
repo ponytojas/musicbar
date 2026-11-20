@@ -187,3 +187,8 @@
 /* Main menu */
 "Window" = "Window";
 "Close" = "Close";
+
+/* Equalizer sensitivity */
+"Sensitivity" = "Sensitivity";
+"Low" = "Low";
+"High" = "High";
