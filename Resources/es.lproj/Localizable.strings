@@ -264,3 +264,19 @@
 "Reset all settings to their defaults?" = "¿Restablecer todos los ajustes a sus valores por defecto?";
 "Reset" = "Restablecer";
 "Diagnostics describe your setup for a bug report. They never include what you listen to." = "El diagnóstico describe tu configuración para un informe de errores. Nunca incluye lo que escuchas.";
+
+/* Listening history */
+"History" = "Historial";
+"Keep listening history" = "Guardar historial de escucha";
+"Period" = "Periodo";
+"Last 7 days" = "Últimos 7 días";
+"Last 30 days" = "Últimos 30 días";
+"All time" = "Desde siempre";
+"Songs played" = "Canciones escuchadas";
+"Kept only on this Mac. A song counts once it has played for 30 seconds." = "Se guarda solo en este Mac. Una canción cuenta cuando ha sonado 30 segundos.";
+"Top Songs" = "Canciones más escuchadas";
+"Top Artists" = "Artistas más escuchados";
+"Nothing yet" = "Todavía nada";
+"Clear History…" = "Borrar historial…";
+"Delete the whole listening history?" = "¿Borrar todo el historial de escucha?";
+"Delete" = "Borrar";

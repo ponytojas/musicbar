@@ -264,3 +264,19 @@
 "Reset all settings to their defaults?" = "Reset all settings to their defaults?";
 "Reset" = "Reset";
 "Diagnostics describe your setup for a bug report. They never include what you listen to." = "Diagnostics describe your setup for a bug report. They never include what you listen to.";
+
+/* Listening history */
+"History" = "History";
+"Keep listening history" = "Keep listening history";
+"Period" = "Period";
+"Last 7 days" = "Last 7 days";
+"Last 30 days" = "Last 30 days";
+"All time" = "All time";
+"Songs played" = "Songs played";
+"Kept only on this Mac. A song counts once it has played for 30 seconds." = "Kept only on this Mac. A song counts once it has played for 30 seconds.";
+"Top Songs" = "Top Songs";
+"Top Artists" = "Top Artists";
+"Nothing yet" = "Nothing yet";
+"Clear History…" = "Clear History…";
+"Delete the whole listening history?" = "Delete the whole listening history?";
+"Delete" = "Delete";

@@ -34,6 +34,10 @@ final class ViewSmokeTests: XCTestCase {
             fittingSize(of: MenuBarSettings(settings: settings)),
             fittingSize(of: EqualizerSettings(settings: settings)),
             fittingSize(of: ShortcutSettings(settings: settings)),
+            fittingSize(of: HistorySettings(settings: settings, history: ListeningHistory(fileURL: nil))),
+            fittingSize(of: HistorySettings(settings: settings, history: ListeningHistory(fileURL: nil, plays: [
+                Play(title: "Song", artist: "Artist", album: "Album", player: "com.apple.Music", date: Date()),
+            ]))),
         ] {
             XCTAssertGreaterThan(size.width, 100)
             XCTAssertGreaterThan(size.height, 100)

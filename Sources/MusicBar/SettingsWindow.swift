@@ -49,10 +49,12 @@ struct SettingsView: View {
                 .tabItem { Label("Equalizer", systemImage: "waveform") }
             ShortcutSettings(settings: settings)
                 .tabItem { Label("Shortcuts", systemImage: "keyboard") }
+            HistorySettings(settings: settings, history: .shared)
+                .tabItem { Label("History", systemImage: "clock") }
         }
         // Short enough for a 13-inch screen at its largest text size; each
         // tab scrolls if it ever needs more.
-        .frame(width: 460, height: 500)
+        .frame(width: 500, height: 500)
         .padding(.top, 8)
     }
 }
@@ -382,6 +384,72 @@ struct ShortcutSettings: View {
         }
         .formStyle(.grouped)
         .onDisappear { ShortcutRecording.cancel() }
+    }
+}
+
+struct HistorySettings: View {
+    @ObservedObject var settings: AppSettings
+    @ObservedObject var history: ListeningHistory
+    @State private var period = HistoryPeriod.week
+    @State private var confirmsClear = false
+
+    private var plays: [Play] {
+        ListeningHistory.plays(history.plays, since: period.start(from: Date()))
+    }
+
+    var body: some View {
+        let plays = plays
+        Form {
+            Section {
+                Toggle("Keep listening history", isOn: $settings.keepListeningHistory)
+                Picker("Period", selection: $period) {
+                    Text("Last 7 days").tag(HistoryPeriod.week)
+                    Text("Last 30 days").tag(HistoryPeriod.month)
+                    Text("All time").tag(HistoryPeriod.all)
+                }
+                LabeledContent("Songs played") {
+                    Text(verbatim: String(plays.count))
+                }
+            } footer: {
+                Footnote("Kept only on this Mac. A song counts once it has played for 30 seconds.")
+            }
+
+            Section("Top Songs") {
+                rows(ListeningHistory.topSongs(in: plays, limit: 10))
+            }
+
+            Section("Top Artists") {
+                rows(ListeningHistory.topArtists(in: plays, limit: 5))
+            }
+
+            Section {
+                Button("Clear History…") { confirmsClear = true }
+                    .disabled(history.plays.isEmpty)
+            }
+        }
+        .formStyle(.grouped)
+        .confirmationDialog("Delete the whole listening history?", isPresented: $confirmsClear) {
+            Button("Delete", role: .destructive) { history.clear() }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    @ViewBuilder
+    private func rows(_ items: [PlayCount]) -> some View {
+        if items.isEmpty {
+            Text("Nothing yet").foregroundStyle(.secondary)
+        } else {
+            ForEach(items) { item in
+                LabeledContent {
+                    Text(verbatim: String(item.count)).monospacedDigit()
+                } label: {
+                    Text(verbatim: item.name).lineLimit(1)
+                    if !item.detail.isEmpty {
+                        Text(verbatim: item.detail).lineLimit(1)
+                    }
+                }
+            }
+        }
     }
 }
 

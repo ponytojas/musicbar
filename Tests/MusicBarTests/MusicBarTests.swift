@@ -557,6 +557,81 @@ final class MusicBarTests: XCTestCase {
         XCTAssertNil(HotKeyAction(id: UInt32(HotKeyAction.allCases.count + 1)))
     }
 
+    // MARK: - Listening history
+
+    func testPlayClockCountsOnlyTimeSpentPlaying() {
+        let start = Date(timeIntervalSinceReferenceDate: 1_000)
+        var clock = PlayClock()
+        XCTAssertEqual(clock.total(at: start), 0)
+        clock.setPlaying(true, at: start)
+        XCTAssertEqual(clock.total(at: start.addingTimeInterval(20)), 20)
+        clock.setPlaying(false, at: start.addingTimeInterval(20))
+        // A long pause adds nothing.
+        XCTAssertEqual(clock.total(at: start.addingTimeInterval(500)), 20)
+        clock.setPlaying(true, at: start.addingTimeInterval(500))
+        // Reporting "playing" again doesn't restart the count.
+        clock.setPlaying(true, at: start.addingTimeInterval(505))
+        XCTAssertEqual(clock.total(at: start.addingTimeInterval(515)), 35)
+    }
+
+    func testListeningHistoryRanksSongsAndArtists() {
+        let now = Date()
+        func play(_ title: String, _ artist: String, daysAgo: Double) -> Play {
+            Play(title: title, artist: artist, album: "", player: "p", date: now.addingTimeInterval(-daysAgo * 86_400))
+        }
+        let plays = [
+            play("A", "X", daysAgo: 40), play("A", "X", daysAgo: 20), play("A", "X", daysAgo: 1),
+            play("B", "X", daysAgo: 2), play("B", "X", daysAgo: 3),
+            play("C", "Y", daysAgo: 0.5), play("A", "Z", daysAgo: 0.1),
+            play("Jingle", "", daysAgo: 0.2),
+        ]
+        let all = ListeningHistory.topSongs(in: plays, limit: 2)
+        XCTAssertEqual(all, [PlayCount(name: "A", detail: "X", count: 3), PlayCount(name: "B", detail: "X", count: 2)])
+
+        // The same title by another artist is another song.
+        XCTAssertEqual(ListeningHistory.topSongs(in: plays, limit: 10).count, 5)
+
+        let week = ListeningHistory.plays(plays, since: HistoryPeriod.week.start(from: now))
+        XCTAssertEqual(week.count, 6)
+        // Within the week B (2) beats A (1); among the singles the most
+        // recently played comes first.
+        XCTAssertEqual(ListeningHistory.topSongs(in: week, limit: 2).map(\.name), ["B", "A"])
+
+        let artists = ListeningHistory.topArtists(in: plays, limit: 5)
+        XCTAssertEqual(artists.first, PlayCount(name: "X", detail: "", count: 5))
+        XCTAssertFalse(artists.contains { $0.name.isEmpty })
+        XCTAssertNil(HistoryPeriod.all.start(from: now))
+        XCTAssertEqual(ListeningHistory.plays(plays, since: nil).count, plays.count)
+    }
+
+    func testListeningHistoryPersistsAndClears() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("MusicBarTests-\(UUID().uuidString)")
+        let file = directory.appendingPathComponent("history.jsonl")
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+
+        let history = ListeningHistory(fileURL: file)
+        XCTAssertTrue(history.plays.isEmpty)
+        let first = Play(title: "Line\nbreak", artist: "A", album: "B", player: "p", date: Date(timeIntervalSince1970: 1_700_000_000))
+        let second = Play(title: "Two", artist: "", album: "", player: "p", date: Date(timeIntervalSince1970: 1_700_000_300))
+        history.record(first)
+        history.record(second)
+
+        // A new instance, as after a relaunch, reads the same plays back.
+        XCTAssertEqual(ListeningHistory(fileURL: file).plays, [first, second])
+
+        // A damaged line is skipped, not fatal.
+        let handle = try FileHandle(forWritingTo: file)
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data("not json\n".utf8))
+        try handle.close()
+        XCTAssertEqual(ListeningHistory(fileURL: file).plays.count, 2)
+
+        history.clear()
+        XCTAssertTrue(history.plays.isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
+        XCTAssertTrue(ListeningHistory(fileURL: file).plays.isEmpty)
+    }
+
     // MARK: - Support
 
     func testDiagnosticsDescribeTheSetupNotTheListening() {

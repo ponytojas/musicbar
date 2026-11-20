@@ -92,6 +92,10 @@ final class AppSettings: ObservableObject {
     @Published var lookUpArtworkOnline: Bool = AppSettings.stored("lookUpArtworkOnline", true) {
         didSet { Self.save(lookUpArtworkOnline, "lookUpArtworkOnline") }
     }
+    /// Remember what was listened to, for the History tab.
+    @Published var keepListeningHistory: Bool = AppSettings.stored("keepListeningHistory", true) {
+        didSet { Self.save(keepListeningHistory, "keepListeningHistory") }
+    }
     @Published var checkForUpdatesAutomatically: Bool = AppSettings.stored("checkForUpdatesAutomatically", false) {
         didSet { Self.save(checkForUpdatesAutomatically, "checkForUpdatesAutomatically") }
     }
@@ -181,6 +185,7 @@ final class AppSettings: ObservableObject {
         hideWhenNoPlayer = fresh.hideWhenNoPlayer
         collapseAfterPauseMinutes = fresh.collapseAfterPauseMinutes
         lookUpArtworkOnline = fresh.lookUpArtworkOnline
+        keepListeningHistory = fresh.keepListeningHistory
         checkForUpdatesAutomatically = fresh.checkForUpdatesAutomatically
         notifyOnTrackChange = fresh.notifyOnTrackChange
         sleepTimerFadeOut = fresh.sleepTimerFadeOut

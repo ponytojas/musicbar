@@ -67,6 +67,9 @@ final class StatusItemController: NSObject {
     private(set) var currentTrackKey: String?
     /// Music persistent ID or Spotify URI of that song, when known.
     private var currentTrackID: String?
+    /// How long the song on display has played, for the listening history.
+    private var playClock = PlayClock()
+    private let history = ListeningHistory.shared
     private var artworkSourceData: Data?
     private var artworkAttempts = 0
     private var artworkTask: Task<Void, Never>?
@@ -111,6 +114,7 @@ final class StatusItemController: NSObject {
         observePlayerLifecycle()
         observeScreenState()
         observeSettings()
+        observeTermination()
         configureNotifications()
         model.sleepTimerActive = sleepTimer.isActive
         music.onPermissionChange = { [weak self] in self?.updateAccessibility() }
@@ -513,6 +517,7 @@ final class StatusItemController: NSObject {
             album: model.album
         )
         if let track, let currentTrack, track.isSameSong(as: currentTrack) {
+            playClock.setPlaying(model.isPlaying, at: Date())
             // Remember an album that arrived late, without a new key.
             if currentTrack.album.isEmpty { self.currentTrack = track }
             if model.artwork == nil, artworkTask == nil, artworkAttempts < Self.maximumArtworkAttempts {
@@ -521,6 +526,9 @@ final class StatusItemController: NSObject {
             return
         }
         guard track != nil || currentTrack != nil else { return }
+        recordPlayIfListened()
+        playClock = PlayClock()
+        playClock.setPlaying(track != nil && model.isPlaying, at: Date())
         currentTrack = track
         let key = track?.key
         currentTrackKey = key
@@ -535,6 +543,32 @@ final class StatusItemController: NSObject {
         recordRecentTrack()
         let notify = didInitialSync && model.isPlaying && AppSettings.shared.notifyOnTrackChange
         loadArtwork(notify: notify)
+    }
+
+    /// Adds the song that is ending to the listening history, if it played
+    /// long enough to count. Also called when MusicBar quits.
+    private func recordPlayIfListened() {
+        guard let track = currentTrack,
+              AppSettings.shared.keepListeningHistory,
+              playClock.total(at: Date()) >= ListeningHistory.minimumPlayTime
+        else { return }
+        history.record(Play(
+            title: track.title,
+            artist: track.artist,
+            album: track.album,
+            player: track.player.rawValue,
+            date: Date()
+        ))
+    }
+
+    private func observeTermination() {
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.recordPlayIfListened() }
+        }
     }
 
     // MARK: - Equalizer
