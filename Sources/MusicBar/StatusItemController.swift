@@ -66,6 +66,11 @@ final class StatusItemController: NSObject {
     private var menuBarProgress: PlaybackProgress?
     private var menuBarProgressTask: Task<Void, Never>?
     private var menuBarProgressTimer: Timer?
+    private weak var statusHostingView: NSView?
+    private var itemLengthTask: Task<Void, Never>?
+    /// What macOS adds around an item of explicit length; measured at launch.
+    private var itemLengthPadding: CGFloat = 0
+    private var didMeasureItemPadding = false
     /// The song on display; nil with nothing queued.
     private var currentTrack: TrackIdentity?
     /// That song's key, fixed when it started: what in-flight work compares
@@ -120,6 +125,7 @@ final class StatusItemController: NSObject {
         observePlayerLifecycle()
         observeScreenState()
         observeSettings()
+        observeItemWidth()
         observeTermination()
         configureNotifications()
         model.sleepTimerActive = sleepTimer.isActive
@@ -190,7 +196,9 @@ final class StatusItemController: NSObject {
             }
             self.hoverPopup.setHovering(hovering, relativeTo: self.statusItem.button)
         }
+        hosting.onIdealSizeChange = { [weak self] in self?.scheduleItemLengthUpdate() }
         hosting.translatesAutoresizingMaskIntoConstraints = false
+        statusHostingView = hosting
         button.addSubview(hosting)
         NSLayoutConstraint.activate([
             hosting.leadingAnchor.constraint(equalTo: button.leadingAnchor),
@@ -581,6 +589,18 @@ final class StatusItemController: NSObject {
         ))
     }
 
+    /// Anything shown in the item, or any setting, may change how wide it
+    /// wants to be.
+    private func observeItemWidth() {
+        measureItemPadding()
+        model.objectWillChange
+            .merge(with: AppSettings.shared.objectWillChange)
+            .sink { [weak self] _ in
+                MainActor.assumeIsolated { self?.scheduleItemLengthUpdate() }
+            }
+            .store(in: &settingsCancellables)
+    }
+
     private func observeTermination() {
         NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification,
@@ -589,6 +609,58 @@ final class StatusItemController: NSObject {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.recordPlayIfListened() }
         }
+    }
+
+    // MARK: - Item width
+
+    // Left to size itself, a status item takes the narrowest width its
+    // content allows, and one whose content can't get narrower is hidden
+    // whole when the strip beside the notch is full. Given an explicit
+    // length, macOS grants it when there is room and trims it to what is
+    // left when there isn't. So the item always asks for the width its
+    // content wants, and the elastic title (see `MarqueeText`) absorbs
+    // whatever macOS trims.
+
+    private static let calibrationLength: CGFloat = 24
+
+    /// macOS makes an item a little wider than the length it is given. How
+    /// much isn't documented, so it is measured once on a length too small
+    /// to be trimmed.
+    private func measureItemPadding() {
+        statusItem.length = Self.calibrationLength
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(150))
+            guard let self else { return }
+            if let width = self.statusItem.button?.window?.frame.width {
+                self.itemLengthPadding = max(0, width - Self.calibrationLength)
+            }
+            self.didMeasureItemPadding = true
+            self.updateItemLength()
+        }
+    }
+
+    /// Now, and again once any transition has settled.
+    private func scheduleItemLengthUpdate() {
+        itemLengthTask?.cancel()
+        itemLengthTask = Task { @MainActor [weak self] in
+            // Past the current layout pass, which is what asked.
+            await Task.yield()
+            self?.updateItemLength()
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled else { return }
+            self?.updateItemLength()
+        }
+    }
+
+    private func updateItemLength() {
+        guard didMeasureItemPadding, let hosting = statusHostingView else { return }
+        let length = Self.itemLength(contentWidth: hosting.fittingSize.width, padding: itemLengthPadding)
+        if abs(statusItem.length - length) >= 0.5 { statusItem.length = length }
+    }
+
+    /// The length to ask macOS for so the item comes out `contentWidth` wide.
+    static func itemLength(contentWidth: CGFloat, padding: CGFloat) -> CGFloat {
+        max(1, contentWidth.rounded(.up) - padding)
     }
 
     // MARK: - Menu bar progress

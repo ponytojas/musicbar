@@ -458,6 +458,14 @@ final class MusicBarTests: XCTestCase {
         XCTAssertEqual(MarqueeText.width(of: ""), 0)
     }
 
+    func testItemAsksForItsContentWidthLessWhatMacOSAdds() {
+        XCTAssertEqual(StatusItemController.itemLength(contentWidth: 136, padding: 16), 120)
+        XCTAssertEqual(StatusItemController.itemLength(contentWidth: 135.2, padding: 16), 120)
+        XCTAssertEqual(StatusItemController.itemLength(contentWidth: 136, padding: 0), 136)
+        // Never zero or negative, which would mean "size yourself".
+        XCTAssertEqual(StatusItemController.itemLength(contentWidth: 10, padding: 16), 1)
+    }
+
     func testItemHidesOnlyWhenAskedAndNoPlayerIsOpen() {
         XCTAssertTrue(StatusItemController.shouldShowItem(hideWhenNoPlayer: false, anyPlayerRunning: false))
         XCTAssertTrue(StatusItemController.shouldShowItem(hideWhenNoPlayer: true, anyPlayerRunning: true))

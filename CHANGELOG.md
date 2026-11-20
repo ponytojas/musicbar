@@ -47,6 +47,7 @@
 
 ### Fixed
 
+- The item could vanish from the menu bar on a Mac with a notch: with the cover shown and a long title it no longer fit beside the notch, and macOS hides an item it can't fit rather than clipping it. The item now asks for the width it wants and its title narrows to whatever room there is.
 - A player stuck on a dialog could freeze every later command for two minutes; scripts now time out.
 - Scripts only talk to a player that is running, so a request caught mid-quit can't relaunch it.
 - The Automation prompt no longer blocks the app while it waits for an answer.

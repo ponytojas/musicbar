@@ -162,6 +162,9 @@ private struct RemainingTime: View {
             Text(verbatim: MenuBarProgressModel.remainingLabel(remaining))
                 .font(.system(size: 10, weight: .medium).monospacedDigit())
                 .foregroundStyle(.secondary)
+                // When the menu bar is short of room the title gives way,
+                // not this: "…" in place of the time says nothing.
+                .fixedSize()
         }
     }
 }
@@ -441,10 +444,15 @@ extension NSColor {
     }
 }
 
-/// Single-line text clamped to `maxWidth`. When the text is wider, it holds
-/// for the configured delay (or until the mouse hovers the item), scrolls
-/// right-to-left to reveal the rest, holds, then eases back — repeating
-/// while music plays. With Reduce Motion it stays put, cut off with a fade.
+/// The title's place in the menu bar item: as wide as the text needs, up to
+/// `maxWidth`, and elastic below that.
+///
+/// The elasticity is what keeps the item on screen. Beside a notch, macOS
+/// gives a status item only the room that is left; an item that can't get
+/// narrower is not clipped but hidden whole. A long title plus the cover
+/// used to be exactly that. Everything else in the item has a fixed size,
+/// so the title is the part that gives way, down to `minimumWidth`, and
+/// scrolls within whatever it gets.
 struct MarqueeText: View {
     let text: String
     let maxWidth: CGFloat
@@ -452,13 +460,33 @@ struct MarqueeText: View {
     @ObservedObject var model: TrackModel
     @ObservedObject var settings: AppSettings
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var offset: CGFloat = 0
+    /// Narrower than this the title says too little to be worth the space.
+    static let minimumWidth: CGFloat = 40
 
-    private let scrollSpeed: CGFloat = 30 // points per second
-
-    private static func font(size: CGFloat) -> NSFont {
+    static func font(size: CGFloat) -> NSFont {
         NSFont.systemFont(ofSize: size, weight: .medium)
+    }
+
+    var body: some View {
+        let wanted = Self.frameWidth(
+            textWidth: Self.width(of: text, fontSize: fontSize),
+            maxWidth: maxWidth,
+            fit: settings.fitTitleToContent
+        )
+        Color.clear
+            .frame(minWidth: min(wanted, Self.minimumWidth), idealWidth: wanted, maxWidth: wanted)
+            .overlay {
+                GeometryReader { geometry in
+                    MarqueeContent(
+                        text: text,
+                        width: geometry.size.width,
+                        fontSize: fontSize,
+                        model: model,
+                        settings: settings
+                    )
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+                }
+            }
     }
 
     /// Measured from the string instead of read back from layout, so the
@@ -471,21 +499,36 @@ struct MarqueeText: View {
     static func frameWidth(textWidth: CGFloat, maxWidth: CGFloat, fit: Bool) -> CGFloat {
         fit ? min(textWidth, maxWidth) : maxWidth
     }
+}
 
-    private var fullTextWidth: CGFloat { Self.width(of: text, fontSize: fontSize) }
+/// Single-line text in exactly `width`. When the text is wider, it holds
+/// for the configured delay (or until the mouse hovers the item), scrolls
+/// right-to-left to reveal the rest, holds, then eases back — repeating
+/// while music plays. With Reduce Motion it stays put, cut off with a fade.
+private struct MarqueeContent: View {
+    let text: String
+    /// The room the layout gave the title, which may be less than it asked for.
+    let width: CGFloat
+    let fontSize: CGFloat
+    @ObservedObject var model: TrackModel
+    @ObservedObject var settings: AppSettings
 
-    private var needsScroll: Bool { fullTextWidth > maxWidth }
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var offset: CGFloat = 0
+
+    private let scrollSpeed: CGFloat = 30 // points per second
+
+    private var fullTextWidth: CGFloat { MarqueeText.width(of: text, fontSize: fontSize) }
+
+    private var needsScroll: Bool { fullTextWidth > width }
 
     var body: some View {
         Text(text)
-            .font(Font(Self.font(size: fontSize)))
+            .font(Font(MarqueeText.font(size: fontSize)))
             .lineLimit(1)
             .fixedSize(horizontal: true, vertical: false)
             .offset(x: offset)
-            .frame(
-                width: Self.frameWidth(textWidth: fullTextWidth, maxWidth: maxWidth, fit: settings.fitTitleToContent),
-                alignment: needsScroll ? .leading : .center
-            )
+            .frame(width: width, alignment: needsScroll ? .leading : .center)
             .clipped()
             .mask(edgeFadeMask)
             .task(id: animationID) { await runMarquee() }
@@ -519,7 +562,7 @@ struct MarqueeText: View {
             }
             guard !Task.isCancelled, model.screenActive else { return }
 
-            let distance = fullTextWidth - maxWidth + 8
+            let distance = fullTextWidth - width + 8
             let duration = Double(distance / scrollSpeed)
             withAnimation(.linear(duration: duration)) {
                 offset = -distance
@@ -545,7 +588,7 @@ struct MarqueeText: View {
     private var animationID: MarqueeAnimationID {
         MarqueeAnimationID(
             text: text,
-            maxWidth: maxWidth,
+            maxWidth: width,
             isHovering: model.isHovering,
             isPlaying: model.isPlaying,
             screenActive: model.screenActive,

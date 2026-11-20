@@ -83,4 +83,46 @@ final class ViewSmokeTests: XCTestCase {
         // The long one stops at the configured width plus its fixed parts.
         XCTAssertLessThan(long.width, AppSettings.shared.textWidth + 80)
     }
+
+    /// macOS hides a status item that can't shrink into the room beside
+    /// the notch. With the cover, a long title and the time left all on,
+    /// the item must still be able to give way: by narrowing the title.
+    func testMenuBarItemShrinksInsteadOfDisappearingWhenShortOfRoom() {
+        let settings = AppSettings.shared
+        settings.resetToDefaults()
+        defer { settings.resetToDefaults() }
+        settings.menuBarProgress = .remaining
+
+        let model = sampleModel(title: "A title far too long to fit in the menu bar at any width")
+        let pixel = NSImage(size: NSSize(width: 68, height: 68), flipped: false) { rect in
+            NSColor.systemOrange.setFill()
+            rect.fill()
+            return true
+        }
+        model.artwork = pixel
+        model.sleepTimerActive = true
+        let progress = MenuBarProgressModel()
+        progress.remaining = 151
+        let controller = NSHostingController(
+            rootView: StatusBarView(model: model, waveform: AudioWaveformModel(), progress: progress)
+        )
+
+        let wanted = controller.sizeThatFits(in: NSSize(width: 10_000, height: 22)).width
+        XCTAssertGreaterThan(wanted, settings.textWidth + 60, "cover, equalizer and time sit beside a full-width title")
+
+        // Offered less, it takes what it is offered…
+        for offered in [wanted - 23, wanted - 60, wanted - 100] {
+            XCTAssertEqual(controller.sizeThatFits(in: NSSize(width: offered, height: 22)).width, offered, accuracy: 0.5)
+        }
+        // …until only the minimum title is left; the other parts don't give.
+        let smallest = controller.sizeThatFits(in: NSSize(width: 0, height: 22)).width
+        XCTAssertEqual(smallest, wanted - settings.textWidth + MarqueeText.minimumWidth, accuracy: 0.5)
+
+        // A title shorter than the minimum asks for no more than itself.
+        model.update(title: "Hi", artist: "", album: "", isPlaying: true)
+        let shortTitle = NSHostingController(
+            rootView: StatusBarView(model: model, waveform: AudioWaveformModel(), progress: progress)
+        )
+        XCTAssertLessThan(shortTitle.sizeThatFits(in: NSSize(width: 0, height: 22)).width, smallest)
+    }
 }

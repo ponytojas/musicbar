@@ -7,6 +7,13 @@ import SwiftUI
 final class HoverTrackingHostingView<Content: View>: NSHostingView<Content> {
     var onHoverChange: ((Bool) -> Void)?
     var passesClicksThrough = false
+    /// The SwiftUI content now wants a different size.
+    var onIdealSizeChange: (() -> Void)?
+
+    override func invalidateIntrinsicContentSize() {
+        super.invalidateIntrinsicContentSize()
+        onIdealSizeChange?()
+    }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         passesClicksThrough ? nil : super.hitTest(point)
