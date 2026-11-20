@@ -15,13 +15,11 @@
 "Fixed color" = "Color fijo";
 "Random colors" = "Colores aleatorios";
 "Custom color" = "Color personalizado";
-"Title width" = "Ancho del título";
 "Auto-scroll after" = "Desplazar tras";
 "5 seconds" = "5 segundos";
 "10 seconds" = "10 segundos";
 "20 seconds" = "20 segundos";
 "30 seconds" = "30 segundos";
-"Long titles always start scrolling when you hover the menu bar item." = "Los títulos largos siempre empiezan a desplazarse al pasar el cursor por el elemento de la barra de menús.";
 "MusicBar Settings" = "Ajustes de MusicBar";
 
 /* Menu */
@@ -108,12 +106,84 @@
 "Copy title and artist" = "Copiar título y artista";
 
 /* Keyboard shortcuts */
-"Keyboard" = "Teclado";
 "Global shortcuts" = "Atajos globales";
-"⌃⌥⌘M shows the card, ⌃⌥⌘F favorites the song, and ⌃⌥⌘P adds it to a playlist." = "⌃⌥⌘M muestra la tarjeta, ⌃⌥⌘F marca la canción como favorita y ⌃⌥⌘P la añade a una playlist.";
 "Added to Favorites" = "Añadida a favoritas";
 "Removed from Favorites" = "Quitada de favoritas";
 
 /* Notifications */
 "Notifications" = "Notificaciones";
 "Notify when the song changes" = "Avisar cuando cambie la canción";
+
+/* Settings tabs and sections */
+"General" = "General";
+"Shortcuts" = "Atajos";
+"Show" = "Mostrar";
+"Title" = "Título";
+"Pointer" = "Puntero";
+"Updates" = "Actualizaciones";
+"Version" = "Versión";
+"Style" = "Estilo";
+
+/* Menu bar settings */
+"Show title" = "Mostrar título";
+"Shrink to fit short titles" = "Ajustar a los títulos cortos";
+"Maximum title width" = "Ancho máximo del título";
+"%lld pt" = "%lld pt";
+"Long titles scroll on their own while music plays, and whenever you hover the menu bar item." = "Los títulos largos se desplazan solos mientras suena la música, y siempre que pasas el cursor por el elemento de la barra de menús.";
+"Show the card on hover" = "Mostrar la tarjeta al pasar el cursor";
+"Scroll to change the volume" = "Cambiar el volumen con el scroll";
+"Double-click opens the player" = "El doble clic abre el reproductor";
+"With double-click on, a single click waits a moment before it plays or pauses, to tell the two apart." = "Con el doble clic activado, un clic simple espera un instante antes de reproducir o pausar, para distinguirlos.";
+
+/* Equalizer styles */
+"Frequency bands" = "Bandas de frecuencia";
+"Loudness" = "Volumen del sonido";
+"Simulated" = "Simulado";
+"Bass on the left, treble on the right, from the player's own audio." = "Graves a la izquierda y agudos a la derecha, a partir del audio del reproductor.";
+"How loud the player's audio is, moment to moment." = "Lo fuerte que suena el audio del reproductor en cada instante.";
+"Decorative movement. MusicBar doesn't listen to any audio, so macOS asks for no recording permission." = "Movimiento decorativo. MusicBar no escucha ningún audio, así que macOS no pide permiso de grabación.";
+"Equalizer Is Simulated…" = "El ecualizador es simulado…";
+"The equalizer is showing simulated movement" = "El ecualizador muestra un movimiento simulado";
+"MusicBar couldn't listen to the player's audio. Allow it under System Audio Recording Only in Privacy & Security, or choose the Simulated style in Settings to stop it trying." = "MusicBar no ha podido escuchar el audio del reproductor. Permítelo en «Solo grabación de audio del sistema», dentro de Privacidad y seguridad, o elige el estilo Simulado en Ajustes para que deje de intentarlo.";
+
+/* Shortcut recorder */
+"Show or hide the card" = "Mostrar u ocultar la tarjeta";
+"Favorite the song" = "Marcar la canción como favorita";
+"Add the song to a playlist" = "Añadir la canción a una playlist";
+"Play or pause" = "Reproducir o pausar";
+"Press shortcut…" = "Pulsa el atajo…";
+"None" = "Ninguno";
+"Another app is already using this shortcut." = "Otra app ya usa este atajo.";
+"Click a shortcut, then press the new keys with ⌃, ⌥ or ⌘. Delete clears it and Esc cancels." = "Haz clic en un atajo y pulsa las teclas nuevas con ⌃, ⌥ o ⌘. Suprimir lo borra y Esc cancela.";
+
+/* Notification settings */
+"Notifications are turned off for MusicBar in System Settings." = "Las notificaciones de MusicBar están desactivadas en Ajustes del Sistema.";
+"Open Notification Settings" = "Abrir ajustes de notificaciones";
+
+/* Updates */
+"Check for updates automatically" = "Buscar actualizaciones automáticamente";
+"Asks GitHub for the latest release once a day. You can also check from the menu." = "Pregunta a GitHub por la última versión una vez al día. También puedes buscarla desde el menú.";
+"Check for Updates…" = "Buscar actualizaciones…";
+"Update Available: %@…" = "Actualización disponible: %@…";
+"MusicBar %@ is available" = "MusicBar %@ está disponible";
+"MusicBar is up to date" = "MusicBar está al día";
+"You have version %@." = "Tienes la versión %@.";
+"Open Download Page" = "Abrir página de descarga";
+"Couldn't check for updates" = "No se pudo buscar actualizaciones";
+
+/* Context menu additions */
+"Allow MusicBar to Control %@…" = "Permitir que MusicBar controle %@…";
+"MusicBar needs permission to control the player" = "MusicBar necesita permiso para controlar el reproductor";
+"Clear Recently Played" = "Borrar reproducidas recientemente";
+"Play again" = "Reproducir de nuevo";
+"Copied title and artist" = "Título y artista copiados";
+"Link copied" = "Enlace copiado";
+"When the Song Ends" = "Al terminar la canción";
+"Show Menu" = "Mostrar menú";
+
+/* Card volume */
+"Volume" = "Volumen";
+
+/* Main menu */
+"Window" = "Ventana";
+"Close" = "Cerrar";

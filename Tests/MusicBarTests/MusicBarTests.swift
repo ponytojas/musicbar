@@ -1,3 +1,4 @@
+import Carbon.HIToolbox
 import SwiftUI
 import XCTest
 @testable import MusicBar
@@ -71,14 +72,18 @@ final class MusicBarTests: XCTestCase {
 
     func testNowPlayingParsing() {
         XCTAssertEqual(
-            MusicController.parseNowPlaying("Song\nArtist\nplaying"),
-            .init(title: "Song", artist: "Artist", isPlaying: true)
+            MusicController.parseNowPlaying("Song\nArtist\nAlbum\n0A1B2C3D4E5F6071\nplaying", from: .appleMusic),
+            .init(title: "Song", artist: "Artist", album: "Album", trackID: "0A1B2C3D4E5F6071", isPlaying: true)
         )
         XCTAssertEqual(
-            MusicController.parseNowPlaying("Two\nLines\n\npaused"),
-            .init(title: "Two\nLines", artist: "", isPlaying: false)
+            MusicController.parseNowPlaying("Two\nLines\n\n\nspotify:track:abc123\npaused", from: .spotify),
+            .init(title: "Two\nLines", artist: "", album: "", trackID: "spotify:track:abc123", isPlaying: false)
         )
-        XCTAssertNil(MusicController.parseNowPlaying("Song\nArtist"))
+        // An ID in the wrong shape for its player is dropped, not trusted.
+        XCTAssertNil(
+            MusicController.parseNowPlaying("Song\nArtist\nAlbum\nspotify:track:abc\nplaying", from: .appleMusic)?.trackID
+        )
+        XCTAssertNil(MusicController.parseNowPlaying("Song\nArtist\nplaying", from: .appleMusic))
     }
 
     func testSpotifyWebURL() {
@@ -140,5 +145,385 @@ final class MusicBarTests: XCTestCase {
         XCTAssertEqual(match?["artistName"] as? String, "The Artist & Friend")
         XCTAssertNil(MusicController.searchResult(in: results, matchingArtist: "Nobody"))
         XCTAssertEqual(MusicController.searchResult(in: results, matchingArtist: "")?["artistName"] as? String, "Tribute Band")
+    }
+
+    // MARK: - Player arbitration
+
+    func testPausedPlayerDoesNotDisplaceThePlayingOne() {
+        // Spotify is playing; Music reports a pause.
+        XCTAssertFalse(MusicController.shouldAdopt(
+            notificationFrom: .appleMusic, isPlaying: false, activePlayer: .spotify, activeIsPlaying: true
+        ))
+        // The active player's own pause always counts.
+        XCTAssertTrue(MusicController.shouldAdopt(
+            notificationFrom: .spotify, isPlaying: false, activePlayer: .spotify, activeIsPlaying: true
+        ))
+        // A player that starts playing takes over.
+        XCTAssertTrue(MusicController.shouldAdopt(
+            notificationFrom: .appleMusic, isPlaying: true, activePlayer: .spotify, activeIsPlaying: true
+        ))
+        // Nothing is playing, so the latest news wins.
+        XCTAssertTrue(MusicController.shouldAdopt(
+            notificationFrom: .appleMusic, isPlaying: false, activePlayer: .spotify, activeIsPlaying: false
+        ))
+    }
+
+    func testInitialPlayerPrefersLastUsedThenInstalled() {
+        let all = PlayerApp.allCases
+        XCTAssertEqual(
+            MusicController.initialPlayer(stored: PlayerApp.spotify.rawValue, allowed: all, installed: all),
+            .spotify
+        )
+        // The remembered player is no longer allowed by the settings.
+        XCTAssertEqual(
+            MusicController.initialPlayer(stored: PlayerApp.spotify.rawValue, allowed: [.appleMusic], installed: all),
+            .appleMusic
+        )
+        // First launch on a Mac with only Spotify installed.
+        XCTAssertEqual(MusicController.initialPlayer(stored: nil, allowed: all, installed: [.spotify]), .spotify)
+        XCTAssertEqual(MusicController.initialPlayer(stored: "nonsense", allowed: all, installed: []), .appleMusic)
+    }
+
+    func testScriptsOnlyReachARunningPlayerAndTimeOut() {
+        let script = MusicController.script(for: .spotify, timeout: 7, "playpause")
+        XCTAssertTrue(script.contains(#"if application "Spotify" is not running then error number -600"#))
+        XCTAssertTrue(script.contains("with timeout of 7 seconds"))
+        XCTAssertTrue(script.contains("playpause"))
+    }
+
+    func testScriptsCompile() throws {
+        // Syntax only: the wrapper must stay valid AppleScript. Plain
+        // statements keep this independent of any player's dictionary.
+        let source = MusicController.script(for: .appleMusic, "return 1\nreturn 2")
+        var error: NSDictionary?
+        let compiled = try XCTUnwrap(NSAppleScript(source: source)).compileAndReturnError(&error)
+        XCTAssertTrue(compiled, String(describing: error))
+    }
+
+    // MARK: - Track identity
+
+    func testTrackIDValidation() {
+        XCTAssertTrue(MusicController.isSpotifyURI("spotify:track:4uLU6hMCjMI75M1A2tKUQC"))
+        XCTAssertTrue(MusicController.isSpotifyURI("spotify:episode:abc123"))
+        XCTAssertFalse(MusicController.isSpotifyURI("spotify:local:Artist:Album:Song:215"))
+        XCTAssertFalse(MusicController.isSpotifyURI(#"spotify:track:abc" & (do shell script "x") & ""#))
+        XCTAssertFalse(MusicController.isSpotifyURI("spotify:track:"))
+        XCTAssertEqual(MusicController.validTrackID("0A1B", for: .appleMusic), "0A1B")
+        XCTAssertNil(MusicController.validTrackID("0A1B", for: .spotify))
+        XCTAssertNil(MusicController.validTrackID("", for: .appleMusic))
+    }
+
+    func testTrackIDFromNotification() {
+        XCTAssertEqual(
+            MusicController.trackID(fromNotification: ["Track ID": "spotify:track:abc123"], player: .spotify),
+            "spotify:track:abc123"
+        )
+        XCTAssertNil(MusicController.trackID(fromNotification: ["Track ID": "spotify:local:a:b:c:1"], player: .spotify))
+        // Music's signed 64-bit number is the hex ID scripts use.
+        XCTAssertEqual(
+            MusicController.trackID(fromNotification: ["PersistentID": NSNumber(value: Int64(-1))], player: .appleMusic),
+            "FFFFFFFFFFFFFFFF"
+        )
+        XCTAssertEqual(
+            MusicController.trackID(fromNotification: ["PersistentID": "255"], player: .appleMusic),
+            "00000000000000FF"
+        )
+        XCTAssertNil(MusicController.trackID(fromNotification: [:], player: .appleMusic))
+    }
+
+    func testTrackIdentityTellsAlbumsApartButToleratesAMissingOne() throws {
+        func track(_ player: PlayerApp = .appleMusic, title: String = "Song", album: String) -> TrackIdentity? {
+            TrackIdentity(player: player, title: title, artist: "A", album: album)
+        }
+        let single = try XCTUnwrap(track(album: "Single"))
+        let live = try XCTUnwrap(track(album: "Live"))
+        XCTAssertFalse(single.isSameSong(as: live))
+        XCTAssertNotEqual(single.key, live.key)
+        XCTAssertFalse(single.isSameSong(as: try XCTUnwrap(track(.spotify, album: "Single"))))
+        XCTAssertFalse(single.isSameSong(as: try XCTUnwrap(track(title: "Other", album: "Single"))))
+
+        // A notification without the album is still the same song as the
+        // script reading that has it, in either order.
+        let unknownAlbum = try XCTUnwrap(track(album: ""))
+        XCTAssertTrue(single.isSameSong(as: unknownAlbum))
+        XCTAssertTrue(unknownAlbum.isSameSong(as: single))
+
+        XCTAssertNil(track(title: "", album: "B"))
+    }
+
+    func testRecentTracksFromOlderVersionsStillLoad() throws {
+        let legacy = Data(#"[{"title":"Song","artist":"A"}]"#.utf8)
+        let history = try JSONDecoder().decode([RecentTrack].self, from: legacy)
+        XCTAssertEqual(history, [RecentTrack(title: "Song", artist: "A")])
+        XCTAssertNil(history.first?.trackID)
+
+        // The same song heard again replaces its entry, even with an ID now.
+        let replayed = RecentTrack(title: "Song", artist: "A", player: PlayerApp.spotify.rawValue, trackID: "spotify:track:x")
+        XCTAssertEqual(RecentTrack.adding(replayed, to: history), [replayed])
+    }
+
+    // MARK: - Equalizer
+
+    func testSpectrumPutsATonesEnergyInItsBand() {
+        let sampleRate = 48_000.0
+        let analyzer = SpectrumAnalyzer()
+        func levels(frequency: Double, amplitude: Float = 0.5) -> [CGFloat] {
+            let samples = (0..<SpectrumAnalyzer.size).map {
+                amplitude * Float(sin(2 * Double.pi * frequency * Double($0) / sampleRate))
+            }
+            return WaveformMath.bandLevels(
+                magnitudes: analyzer.magnitudes(of: samples),
+                sampleRate: sampleRate,
+                bandCount: AudioWaveformModel.barCount
+            )
+        }
+
+        let bass = levels(frequency: 80)
+        XCTAssertEqual(bass.count, AudioWaveformModel.barCount)
+        XCTAssertEqual(bass.firstIndex(of: bass.max()!), 0)
+
+        let treble = levels(frequency: 9_000)
+        XCTAssertEqual(treble.firstIndex(of: treble.max()!), AudioWaveformModel.barCount - 1)
+        XCTAssertLessThan(treble[0], 0.2)
+
+        let middle = levels(frequency: 1_000)
+        let peak = middle.firstIndex(of: middle.max()!)!
+        XCTAssertTrue((2...4).contains(peak), "1 kHz peaked in band \(peak)")
+        XCTAssertTrue((bass + treble + middle).allSatisfy { (0...1).contains($0) })
+    }
+
+    func testSpectrumOfSilenceIsFlat() {
+        let silence = [Float](repeating: 0, count: SpectrumAnalyzer.size)
+        let levels = WaveformMath.bandLevels(
+            magnitudes: SpectrumAnalyzer().magnitudes(of: silence),
+            sampleRate: 44_100,
+            bandCount: 7
+        )
+        XCTAssertEqual(levels, Array(repeating: 0, count: 7))
+        XCTAssertEqual(WaveformMath.bandLevels(magnitudes: [], sampleRate: 44_100, bandCount: 7).count, 7)
+    }
+
+    func testSpectrumScalesAFullScaleSineToOne() {
+        // Exactly on a bin, so no energy leaks to its neighbors.
+        let bin = 64
+        let samples = (0..<SpectrumAnalyzer.size).map {
+            Float(sin(2 * Double.pi * Double(bin) * Double($0) / Double(SpectrumAnalyzer.size)))
+        }
+        let magnitudes = SpectrumAnalyzer().magnitudes(of: samples)
+        XCTAssertEqual(magnitudes.count, SpectrumAnalyzer.size / 2)
+        XCTAssertEqual(magnitudes[bin], 1, accuracy: 0.01)
+        XCTAssertLessThan(magnitudes[bin + 10], 0.001)
+        XCTAssertTrue(SpectrumAnalyzer().magnitudes(of: [1, 2, 3]).isEmpty)
+    }
+
+    func testSpectrumOfMusicLikeNoiseUsesTheMiddleOfTheRange() {
+        // Noise falling 3 dB per octave is a fair stand-in for mastered
+        // music. Its bars should sit mid-height, none pinned or dead.
+        var generator = SystemRandomNumberGenerator()
+        var rows = [Float](repeating: 0, count: 12)
+        var sum: Float = 0
+        var samples: [Float] = []
+        // Voss-McCartney pink noise.
+        for index in 0..<(SpectrumAnalyzer.size * 40) {
+            let row = (index + 1).trailingZeroBitCount % rows.count
+            sum -= rows[row]
+            rows[row] = Float.random(in: -1...1, using: &generator)
+            sum += rows[row]
+            samples.append(sum)
+        }
+        let rms = (samples.reduce(0) { $0 + $1 * $1 } / Float(samples.count)).squareRoot()
+        samples = samples.map { $0 / rms * 0.2 } // about -14 dBFS
+
+        let analyzer = SpectrumAnalyzer()
+        var totals = [CGFloat](repeating: 0, count: 7)
+        let windows = samples.count / SpectrumAnalyzer.size
+        for window in 0..<windows {
+            let slice = Array(samples[(window * SpectrumAnalyzer.size)..<((window + 1) * SpectrumAnalyzer.size)])
+            let levels = WaveformMath.bandLevels(
+                magnitudes: analyzer.magnitudes(of: slice), sampleRate: 48_000, bandCount: 7
+            )
+            for band in 0..<7 { totals[band] += levels[band] }
+        }
+        let averages = totals.map { $0 / CGFloat(windows) }
+        for (band, average) in averages.enumerated() {
+            XCTAssertTrue((0.3...0.9).contains(average), "band \(band) averaged \(average)")
+        }
+    }
+
+    func testSlidingSampleWindow() {
+        var window: [Float] = [1, 2, 3, 4]
+        WaveformMath.slide(&window, appending: [5, 6])
+        XCTAssertEqual(window, [3, 4, 5, 6])
+        WaveformMath.slide(&window, appending: [7, 8, 9, 10, 11])
+        XCTAssertEqual(window, [8, 9, 10, 11])
+        WaveformMath.slide(&window, appending: [])
+        XCTAssertEqual(window, [8, 9, 10, 11])
+    }
+
+    func testSimulatedWaveformMovesWithinRange() {
+        let first = SimulatedWaveform.levels(at: 10)
+        let later = SimulatedWaveform.levels(at: 10.5)
+        XCTAssertEqual(first.count, AudioWaveformModel.barCount)
+        XCTAssertNotEqual(first, later)
+        XCTAssertNotEqual(Set(first).count, 1, "bars should not move in unison")
+        for time in stride(from: 0.0, to: 60, by: 0.37) {
+            XCTAssertTrue(SimulatedWaveform.levels(at: time).allSatisfy { (0.06...1).contains($0) })
+        }
+        XCTAssertFalse(EqualizerStyle.simulated.capturesAudio)
+        XCTAssertTrue(EqualizerStyle.spectrum.capturesAudio)
+    }
+
+    func testBarColorsStayLegibleOnTheMenuBar() {
+        func brightness(_ color: NSColor) -> CGFloat {
+            (color.usingColorSpace(.sRGB) ?? color).brightnessComponent
+        }
+        let nearBlack = NSColor(srgbRed: 0.1, green: 0.02, blue: 0.02, alpha: 1)
+        XCTAssertGreaterThanOrEqual(brightness(nearBlack.legible(onDarkBackground: true)), 0.59)
+        XCTAssertEqual(brightness(nearBlack.legible(onDarkBackground: false)), brightness(nearBlack), accuracy: 0.001)
+
+        let nearWhite = NSColor(srgbRed: 1, green: 0.98, blue: 0.9, alpha: 1)
+        XCTAssertLessThanOrEqual(brightness(nearWhite.legible(onDarkBackground: false)), 0.71)
+        XCTAssertEqual(brightness(nearWhite.legible(onDarkBackground: true)), brightness(nearWhite), accuracy: 0.001)
+    }
+
+    // MARK: - Menu bar and card layout
+
+    func testTitleWidthFitsShortTitles() {
+        XCTAssertEqual(MarqueeText.frameWidth(textWidth: 60, maxWidth: 150, fit: true), 60)
+        XCTAssertEqual(MarqueeText.frameWidth(textWidth: 400, maxWidth: 150, fit: true), 150)
+        XCTAssertEqual(MarqueeText.frameWidth(textWidth: 60, maxWidth: 150, fit: false), 150)
+        XCTAssertGreaterThan(MarqueeText.width(of: "A much longer title"), MarqueeText.width(of: "Short"))
+        XCTAssertEqual(MarqueeText.width(of: ""), 0)
+    }
+
+    func testSeekFractionClampsToTheBar() {
+        XCTAssertEqual(HoverPopupView.seekFraction(x: 42, width: 168), 0.25, accuracy: 0.0001)
+        XCTAssertEqual(HoverPopupView.seekFraction(x: -20, width: 168), 0)
+        XCTAssertEqual(HoverPopupView.seekFraction(x: 500, width: 168), 1)
+        XCTAssertEqual(HoverPopupView.seekFraction(x: 10, width: 0), 0)
+    }
+
+    func testCardSecondLineJoinsArtistAndAlbum() {
+        let model = TrackModel()
+        model.update(title: "Song", artist: "Artist", album: "Album", isPlaying: true)
+        XCTAssertEqual(model.artistAndAlbum, "Artist — Album")
+        model.update(title: "Song", artist: "", album: "Album", isPlaying: true)
+        XCTAssertEqual(model.artistAndAlbum, "Album")
+        model.clear()
+        XCTAssertEqual(model.artistAndAlbum, "")
+        XCTAssertFalse(model.hasTrack)
+    }
+
+    // MARK: - Shortcuts
+
+    func testShortcutNeedsACommandLikeModifier() {
+        XCTAssertNil(Shortcut(keyCode: UInt16(kVK_ANSI_M), modifierFlags: [], characters: "m"))
+        XCTAssertNil(Shortcut(keyCode: UInt16(kVK_ANSI_M), modifierFlags: [.shift], characters: "M"))
+        let shortcut = Shortcut(keyCode: UInt16(kVK_ANSI_M), modifierFlags: [.control, .option, .command], characters: "m")
+        XCTAssertEqual(shortcut, HotKeyAction.defaultShortcuts[.toggleCard])
+        XCTAssertEqual(shortcut?.displayText, "⌃⌥⌘M")
+        XCTAssertEqual(
+            Shortcut(keyCode: UInt16(kVK_RightArrow), modifierFlags: [.shift, .command], characters: nil)?.displayText,
+            "⇧⌘→"
+        )
+        // A key with nothing printable to show can't be recorded.
+        XCTAssertNil(Shortcut(keyCode: 200, modifierFlags: [.command], characters: nil))
+    }
+
+    func testShortcutsSurviveSavingAndStayUnique() throws {
+        let saved = try XCTUnwrap(Shortcut.encode(HotKeyAction.defaultShortcuts))
+        XCTAssertEqual(Shortcut.decode(saved), HotKeyAction.defaultShortcuts)
+        XCTAssertNil(Shortcut.decode(Data("not json".utf8)))
+
+        // Giving Play/Pause the card's combination takes it from the card.
+        let card = try XCTUnwrap(HotKeyAction.defaultShortcuts[.toggleCard])
+        let moved = Shortcut.assigning(card, to: .playPause, in: HotKeyAction.defaultShortcuts)
+        XCTAssertEqual(moved[.playPause], card)
+        XCTAssertNil(moved[.toggleCard])
+        XCTAssertNotNil(moved[.toggleFavorite])
+
+        XCTAssertNil(Shortcut.assigning(nil, to: .playPause, in: moved)[.playPause])
+    }
+
+    func testHotKeyActionsRoundTripThroughTheirIDs() {
+        for action in HotKeyAction.allCases {
+            XCTAssertEqual(HotKeyAction(id: action.id), action)
+        }
+        XCTAssertNil(HotKeyAction(id: 0))
+        XCTAssertNil(HotKeyAction(id: UInt32(HotKeyAction.allCases.count + 1)))
+    }
+
+    // MARK: - Sleep timer
+
+    private func makeDefaults() throws -> UserDefaults {
+        let name = "MusicBarTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
+        addTeardownBlock { defaults.removePersistentDomain(forName: name) }
+        return defaults
+    }
+
+    func testSleepTimerAtEndOfTrackFiresOnTheNextSong() throws {
+        var fired = 0
+        let timer = SleepTimer(defaults: try makeDefaults(), onFire: { fired += 1 }, onChange: {})
+        XCTAssertFalse(timer.isActive)
+        timer.trackDidChange()
+        XCTAssertEqual(fired, 0, "an idle timer ignores track changes")
+
+        timer.set(.endOfTrack)
+        XCTAssertTrue(timer.isActive)
+        timer.trackDidChange()
+        XCTAssertEqual(fired, 1)
+        XCTAssertFalse(timer.isActive)
+        timer.trackDidChange()
+        XCTAssertEqual(fired, 1, "it fires once")
+    }
+
+    func testSleepTimerCountdownSurvivesARelaunch() throws {
+        let defaults = try makeDefaults()
+        let timer = SleepTimer(defaults: defaults, onFire: {}, onChange: {})
+        timer.set(.minutes(30))
+        let end = try XCTUnwrap(timer.end)
+        XCTAssertEqual(end.timeIntervalSinceNow, 30 * 60, accuracy: 5)
+
+        // A new instance, as after quitting and reopening.
+        let relaunched = SleepTimer(defaults: defaults, onFire: {}, onChange: {})
+        XCTAssertEqual(relaunched.mode, .minutes(30))
+        XCTAssertEqual(relaunched.end, end)
+
+        relaunched.set(.off)
+        XCTAssertFalse(SleepTimer(defaults: defaults, onFire: {}, onChange: {}).isActive)
+    }
+
+    func testSleepTimerIgnoresADeadlineThatPassed() {
+        let now = Date()
+        XCTAssertNil(SleepTimer.pendingEnd(now.addingTimeInterval(-1), now: now))
+        XCTAssertNil(SleepTimer.pendingEnd(nil, now: now))
+        XCTAssertEqual(SleepTimer.pendingEnd(now.addingTimeInterval(60), now: now), now.addingTimeInterval(60))
+    }
+
+    // MARK: - Network
+
+    func testOnlyKnownImageHostsAreDownloaded() throws {
+        func trusted(_ string: String) throws -> Bool {
+            ArtworkDownloader.isTrustedArtworkURL(try XCTUnwrap(URL(string: string)))
+        }
+        XCTAssertTrue(try trusted("https://i.scdn.co/image/ab67616d0000b273"))
+        XCTAssertTrue(try trusted("https://is1-ssl.mzstatic.com/image/thumb/a/600x600bb.jpg"))
+        XCTAssertFalse(try trusted("http://i.scdn.co/image/ab67616d0000b273"))
+        XCTAssertFalse(try trusted("https://example.com/cover.jpg"))
+        XCTAssertFalse(try trusted("https://evilscdn.co/cover.jpg"))
+        XCTAssertFalse(try trusted("https://scdn.co.example.com/cover.jpg"))
+        XCTAssertFalse(try trusted("file:///etc/passwd"))
+    }
+
+    func testVersionComparison() {
+        XCTAssertTrue(UpdateChecker.isNewer("v1.2", than: "1.1"))
+        XCTAssertTrue(UpdateChecker.isNewer("1.10", than: "1.9"))
+        XCTAssertTrue(UpdateChecker.isNewer("1.1.1", than: "1.1"))
+        XCTAssertFalse(UpdateChecker.isNewer("v1.1", than: "1.1"))
+        XCTAssertFalse(UpdateChecker.isNewer("1.1", than: "1.1.0"))
+        XCTAssertFalse(UpdateChecker.isNewer("1.0", than: "1.1"))
+        XCTAssertFalse(UpdateChecker.isNewer("garbage", than: "1.1"))
+        XCTAssertEqual(UpdateChecker.normalized("v2.0"), "2.0")
     }
 }

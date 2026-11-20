@@ -1,6 +1,6 @@
+import Accelerate
 import AppKit
 import AudioToolbox
-import AVFoundation
 import CoreAudio
 import os
 
@@ -75,32 +75,134 @@ enum WaveformMath {
             min(1, max(0.04, visualCenter + (level - average) * 3.2))
         }
     }
+
+    /// Groups FFT magnitudes into `bandCount` bars, bass first. Bands are
+    /// spaced evenly in pitch from 50 Hz to 14 kHz, the way an equalizer
+    /// lays them out. `magnitudes` are the first half of the spectrum,
+    /// scaled so a full-scale sine reads 1.
+    static func bandLevels(magnitudes: [Float], sampleRate: Double, bandCount: Int) -> [CGFloat] {
+        let silent = Array(repeating: CGFloat(0), count: max(0, bandCount))
+        let lowest = 50.0
+        let highest = min(14_000, sampleRate / 2)
+        guard magnitudes.count > 1, bandCount > 0, highest > lowest else { return silent }
+        let binWidth = sampleRate / Double(magnitudes.count * 2)
+        let ratio = highest / lowest
+        return (0..<bandCount).map { band in
+            let from = lowest * pow(ratio, Double(band) / Double(bandCount))
+            let to = lowest * pow(ratio, Double(band + 1) / Double(bandCount))
+            // Bin 0 is DC, which carries no sound.
+            let firstBin = min(magnitudes.count - 1, max(1, Int(from / binWidth)))
+            let lastBin = min(magnitudes.count - 1, max(firstBin, Int(to / binWidth) - 1))
+            var energy: Float = 0
+            for bin in firstBin...lastBin {
+                energy += magnitudes[bin] * magnitudes[bin]
+            }
+            let rms = (energy / Float(lastBin - firstBin + 1)).squareRoot()
+            // Music carries about 3 dB less per octave going up; without
+            // this tilt the bass bars would tower over a flat treble.
+            let octavesUp = log2((from * to).squareRoot() / lowest)
+            let tilt = Float(pow(10, 3 * octavesUp / 20))
+            return normalizedLevel(rms: rms * tilt)
+        }
+    }
+
+    /// Slides `window` forward to end with `samples`, keeping its length.
+    static func slide(_ window: inout [Float], appending samples: [Float]) {
+        guard !window.isEmpty, !samples.isEmpty else { return }
+        if samples.count >= window.count {
+            window = Array(samples.suffix(window.count))
+        } else {
+            window.removeFirst(samples.count)
+            window.append(contentsOf: samples)
+        }
+    }
+}
+
+/// Movement for the "simulated" equalizer: a few slow sine waves per bar,
+/// out of step with each other. It reads no audio at all.
+enum SimulatedWaveform {
+    static func levels(at time: TimeInterval, count: Int = waveformBarCount) -> [CGFloat] {
+        (0..<count).map { index -> CGFloat in
+            let bar = Double(index)
+            let slow: Double = sin(time * (0.9 + bar * 0.13) + bar * 2.1)
+            let medium: Double = sin(time * (2.1 + bar * 0.37) + bar * 1.3)
+            let fast: Double = sin(time * (5.3 + bar * 0.91) + bar * 0.7)
+            let level: Double = 0.45 + 0.12 * slow + 0.22 * medium + 0.16 * fast
+            return CGFloat(min(1, max(0.06, level)))
+        }
+    }
+}
+
+/// Windowed FFT of the last `size` samples. Not thread-safe; the capture
+/// uses it from its audio queue only.
+final class SpectrumAnalyzer {
+    /// 2048 samples resolve about 23 Hz at 48 kHz: enough to tell the two
+    /// lowest bars apart. Half that leaves the bass bar a single bin.
+    static let size = 2048
+
+    private let setup: vDSP_DFT_Setup?
+    private let window: [Float]
+    private let zeros = [Float](repeating: 0, count: size)
+    private var windowed = [Float](repeating: 0, count: size)
+    private var real = [Float](repeating: 0, count: size)
+    private var imaginary = [Float](repeating: 0, count: size)
+
+    init() {
+        setup = vDSP_DFT_zop_CreateSetup(nil, vDSP_Length(Self.size), .FORWARD)
+        // Hann: peak 1, so a sine's two halves add up to size / 4 in its bin.
+        window = (0..<Self.size).map { 0.5 * (1 - cos(2 * Float.pi * Float($0) / Float(Self.size))) }
+    }
+
+    deinit {
+        if let setup { vDSP_DFT_DestroySetup(setup) }
+    }
+
+    /// First half of the spectrum, scaled so a full-scale sine reads 1.
+    func magnitudes(of samples: [Float]) -> [Float] {
+        guard let setup, samples.count == Self.size else { return [] }
+        for index in 0..<Self.size {
+            windowed[index] = samples[index] * window[index]
+        }
+        vDSP_DFT_Execute(setup, windowed, zeros, &real, &imaginary)
+        let scale = Float(Self.size) / 4
+        return (0..<Self.size / 2).map { bin in
+            (real[bin] * real[bin] + imaginary[bin] * imaginary[bin]).squareRoot() / scale
+        }
+    }
 }
 
 /// Captures only Apple Music or Spotify's output with a Core Audio process
-/// tap. The HAL callback does a small RMS reduction and publishes at 15 Hz;
-/// no PCM audio is retained or written anywhere.
+/// tap. The HAL callback reduces each buffer to seven levels and publishes
+/// at 15 Hz; no PCM audio is written anywhere, and at most the last 2048
+/// samples (about 43 ms, for the frequency analysis) stay in memory.
 final class AudioWaveformCapture: @unchecked Sendable {
     private let setupQueue = DispatchQueue(label: "MusicBar.waveform.setup", qos: .utility)
     private let audioQueue = DispatchQueue(label: "MusicBar.waveform.audio", qos: .userInteractive)
     private let onLevels: @Sendable ([CGFloat]) -> Void
     private let onStopped: @Sendable () -> Void
+    /// true once a capture starts, false when one couldn't.
+    private let onAvailability: @Sendable (Bool) -> Void
 
     // setupQueue-only state.
     private var capturedPlayer: PlayerApp?
+    private var capturesSpectrum = true
     private var processTapID = AudioObjectID(kAudioObjectUnknown)
     private var aggregateDeviceID = AudioObjectID(kAudioObjectUnknown)
     private var deviceProcID: AudioDeviceIOProcID?
 
     // audioQueue-only.
     private var lastPublishNanoseconds: UInt64 = 0
+    private var recentSamples = [Float](repeating: 0, count: SpectrumAnalyzer.size)
+    private let analyzer = SpectrumAnalyzer()
 
     init(
         onLevels: @escaping @Sendable ([CGFloat]) -> Void,
-        onStopped: @escaping @Sendable () -> Void
+        onStopped: @escaping @Sendable () -> Void,
+        onAvailability: @escaping @Sendable (Bool) -> Void
     ) {
         self.onLevels = onLevels
         self.onStopped = onStopped
+        self.onAvailability = onAvailability
 
         // The aggregate device is bound to the output device present at start;
         // rebuild it when the user switches output (AirPods, unplugging, …).
@@ -116,9 +218,15 @@ final class AudioWaveformCapture: @unchecked Sendable {
         }
     }
 
-    func capture(_ player: PlayerApp?) {
+    /// Starts capturing `player`, or stops with nil. `spectrum` picks
+    /// frequency bands over plain loudness. A capture that failed is tried
+    /// again on the next call.
+    func capture(_ player: PlayerApp?, spectrum: Bool = true) {
         setupQueue.async { [weak self] in
-            guard let self, player != self.capturedPlayer else { return }
+            guard let self else { return }
+            let sameStyle = player == nil || spectrum == self.capturesSpectrum
+            guard player != self.capturedPlayer || !sameStyle else { return }
+            self.capturesSpectrum = spectrum
             self.switchOnSetupQueue(to: player)
         }
     }
@@ -129,17 +237,15 @@ final class AudioWaveformCapture: @unchecked Sendable {
         do {
             try startOnSetupQueue(player)
             capturedPlayer = player
+            onAvailability(true)
         } catch {
             Logger.musicBar.error("Waveform capture unavailable: \(error.localizedDescription, privacy: .public)")
             stopOnSetupQueue()
+            onAvailability(false)
         }
     }
 
     private func startOnSetupQueue(_ player: PlayerApp) throws {
-        guard #available(macOS 14.2, *) else {
-            throw CaptureError.unsupportedSystem
-        }
-
         let processIDs = try Self.audioProcessObjectIDs(for: player)
         guard !processIDs.isEmpty else { throw CaptureError.playerHasNoAudioProcess }
 
@@ -181,13 +287,14 @@ final class AudioWaveformCapture: @unchecked Sendable {
             throw CaptureError.unsupportedAudioFormat
         }
 
+        let spectrum = capturesSpectrum
         var procID: AudioDeviceIOProcID?
         let status = AudioDeviceCreateIOProcIDWithBlock(
             &procID,
             aggregateID,
             audioQueue
         ) { [weak self] _, inputData, _, _, _ in
-            self?.consume(inputData, format: format)
+            self?.consume(inputData, format: format, spectrum: spectrum)
         }
         try Self.check(status, operation: "create audio callback")
         deviceProcID = procID
@@ -203,9 +310,7 @@ final class AudioWaveformCapture: @unchecked Sendable {
             _ = AudioHardwareDestroyAggregateDevice(aggregateDeviceID)
         }
         if processTapID != kAudioObjectUnknown {
-            if #available(macOS 14.2, *) {
-                _ = AudioHardwareDestroyProcessTap(processTapID)
-            }
+            _ = AudioHardwareDestroyProcessTap(processTapID)
         }
         deviceProcID = nil
         aggregateDeviceID = kAudioObjectUnknown
@@ -216,16 +321,34 @@ final class AudioWaveformCapture: @unchecked Sendable {
 
     private func consume(
         _ inputData: UnsafePointer<AudioBufferList>,
-        format: AudioStreamBasicDescription
+        format: AudioStreamBasicDescription,
+        spectrum: Bool
     ) {
+        let isFloat = format.mFormatFlags & kAudioFormatFlagIsFloat != 0
+        let isSignedInteger = format.mFormatFlags & kAudioFormatFlagIsSignedInteger != 0
+        let buffers = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: inputData))
+
+        // The FFT looks at more than one callback's worth of audio, so
+        // every buffer is folded in, not just the ones that get published.
+        if spectrum, let buffer = buffers.first {
+            let mono = Self.monoSamples(buffer, isFloat: isFloat, isSignedInteger: isSignedInteger, format: format)
+            WaveformMath.slide(&recentSamples, appending: mono)
+        }
+
         let now = DispatchTime.now().uptimeNanoseconds
         let interval: UInt64 = 66_666_667 // 15 UI updates per second.
         guard now &- lastPublishNanoseconds >= interval else { return }
         lastPublishNanoseconds = now
 
-        let isFloat = format.mFormatFlags & kAudioFormatFlagIsFloat != 0
-        let isSignedInteger = format.mFormatFlags & kAudioFormatFlagIsSignedInteger != 0
-        let buffers = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: inputData))
+        if spectrum {
+            onLevels(WaveformMath.bandLevels(
+                magnitudes: analyzer.magnitudes(of: recentSamples),
+                sampleRate: format.mSampleRate,
+                bandCount: waveformBarCount
+            ))
+            return
+        }
+
         var sums = Array(repeating: Double(0), count: waveformBarCount)
         var counts = Array(repeating: 0, count: waveformBarCount)
 
@@ -258,6 +381,38 @@ final class AudioWaveformCapture: @unchecked Sendable {
         onLevels(WaveformMath.displayLevels(from: measuredLevels))
     }
 
+    /// Averages a buffer's channels into mono; empty for formats the tap
+    /// isn't expected to deliver.
+    private static func monoSamples(
+        _ buffer: AudioBuffer,
+        isFloat: Bool,
+        isSignedInteger: Bool,
+        format: AudioStreamBasicDescription
+    ) -> [Float] {
+        guard let rawData = buffer.mData else { return [] }
+        let channelCount = max(1, Int(buffer.mNumberChannels))
+        let sample: (Int) -> Float
+        let sampleCount: Int
+        if isFloat, format.mBitsPerChannel == 32 {
+            let samples = rawData.assumingMemoryBound(to: Float.self)
+            sampleCount = Int(buffer.mDataByteSize) / MemoryLayout<Float>.size
+            sample = { samples[$0] }
+        } else if isSignedInteger, format.mBitsPerChannel == 16 {
+            let samples = rawData.assumingMemoryBound(to: Int16.self)
+            sampleCount = Int(buffer.mDataByteSize) / MemoryLayout<Int16>.size
+            sample = { Float(samples[$0]) / Float(Int16.max) }
+        } else {
+            return []
+        }
+        return (0..<sampleCount / channelCount).map { frame in
+            var sum: Float = 0
+            for channel in 0..<channelCount {
+                sum += sample(frame * channelCount + channel)
+            }
+            return sum / Float(channelCount)
+        }
+    }
+
     /// Sums squared samples into one bucket per bar; `sample` reads and
     /// scales the interleaved sample at an index.
     private static func accumulate(
@@ -279,7 +434,6 @@ final class AudioWaveformCapture: @unchecked Sendable {
         }
     }
 
-    @available(macOS 14.2, *)
     private static func audioProcessObjectIDs(for player: PlayerApp) throws -> [AudioObjectID] {
         let applications = NSRunningApplication.runningApplications(withBundleIdentifier: player.rawValue)
         return try applications.compactMap { application in
@@ -348,7 +502,6 @@ final class AudioWaveformCapture: @unchecked Sendable {
         return uid as String
     }
 
-    @available(macOS 14.2, *)
     private static func tapFormat(_ tapID: AudioObjectID) throws -> AudioStreamBasicDescription {
         var format = AudioStreamBasicDescription()
         var size = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
@@ -369,7 +522,6 @@ final class AudioWaveformCapture: @unchecked Sendable {
     }
 
     private enum CaptureError: LocalizedError {
-        case unsupportedSystem
         case playerHasNoAudioProcess
         case noOutputDevice
         case unsupportedAudioFormat
@@ -377,7 +529,6 @@ final class AudioWaveformCapture: @unchecked Sendable {
 
         var errorDescription: String? {
             switch self {
-            case .unsupportedSystem: "Real waveform capture requires macOS 14.2 or later."
             case .playerHasNoAudioProcess: "The player has no active Core Audio process."
             case .noOutputDevice: "No system output device is available."
             case .unsupportedAudioFormat: "The player's audio format isn't supported."

@@ -24,27 +24,66 @@ enum PlayerApp: String, CaseIterable, Sendable {
     var isRunning: Bool {
         !NSRunningApplication.runningApplications(withBundleIdentifier: rawValue).isEmpty
     }
+
+    var isInstalled: Bool {
+        NSWorkspace.shared.urlForApplication(withBundleIdentifier: rawValue) != nil
+    }
 }
 
-/// Executes AppleScript off the main thread. NSAppleScript and its result
-/// descriptors aren't Sendable, so the serial queue keeps every script object
-/// on one thread for its lifetime and converts results to value types before
-/// returning. This prevents slow player replies from beachballing the menu bar.
+/// Executes AppleScript off the main thread, so a slow player reply never
+/// beachballs the menu bar. NSAppleScript and its result descriptors aren't
+/// Sendable and aren't meant to hop threads, so every script object lives on
+/// one dedicated thread and results are converted to value types before
+/// they leave it. Scripts run one at a time, in order.
 private struct ScriptResponse<Value: Sendable>: Sendable {
     let value: Value?
     let errorNumber: Int?
 }
 
+/// A single long-lived thread draining a job list. A serial dispatch queue
+/// only promises one job at a time, not the same thread every time.
+private final class SerialThread: @unchecked Sendable {
+    private let condition = NSCondition()
+    private var jobs: [@Sendable () -> Void] = []
+
+    init(name: String) {
+        let thread = Thread { [self] in run() }
+        thread.name = name
+        thread.qualityOfService = .userInitiated
+        thread.start()
+    }
+
+    func enqueue(_ job: @escaping @Sendable () -> Void) {
+        condition.lock()
+        jobs.append(job)
+        condition.signal()
+        condition.unlock()
+    }
+
+    /// App-lifetime thread, so this never returns.
+    private func run() {
+        while true {
+            condition.lock()
+            while jobs.isEmpty { condition.wait() }
+            let job = jobs.removeFirst()
+            condition.unlock()
+            autoreleasepool { job() }
+        }
+    }
+}
+
 private final class ScriptRunner: @unchecked Sendable {
-    private let queue = DispatchQueue(label: "MusicBar.applescript", qos: .userInitiated)
-    /// Compiled scripts, keyed by source; the app uses a handful of fixed
-    /// scripts, so caching avoids recompiling on every poll/notification.
-    /// Accessed only on `queue`.
+    private let thread = SerialThread(name: "MusicBar.applescript")
+    /// Compiled scripts, keyed by source. Most scripts are fixed, so caching
+    /// avoids recompiling on every poll/notification; the few that embed a
+    /// number (seek position, volume) would grow it forever, so it is
+    /// emptied when it fills. Accessed only on `thread`.
     private var compiledScripts: [String: NSAppleScript] = [:]
+    private static let maximumCachedScripts = 64
 
     func runString(_ source: String) async -> ScriptResponse<String> {
         await withCheckedContinuation { continuation in
-            queue.async {
+            thread.enqueue {
                 let result = self.runSync(source)
                 continuation.resume(returning: ScriptResponse(
                     value: result.descriptor?.stringValue,
@@ -56,7 +95,7 @@ private final class ScriptRunner: @unchecked Sendable {
 
     func runData(_ source: String) async -> ScriptResponse<Data> {
         await withCheckedContinuation { continuation in
-            queue.async {
+            thread.enqueue {
                 let result = self.runSync(source)
                 let value: Data?
                 if let text = result.descriptor?.stringValue, text.isEmpty {
@@ -74,7 +113,7 @@ private final class ScriptRunner: @unchecked Sendable {
 
     func runCommand(_ source: String) async -> ScriptResponse<Bool> {
         await withCheckedContinuation { continuation in
-            queue.async {
+            thread.enqueue {
                 let result = self.runSync(source)
                 continuation.resume(returning: ScriptResponse(
                     value: result.descriptor == nil ? nil : true,
@@ -84,8 +123,8 @@ private final class ScriptRunner: @unchecked Sendable {
         }
     }
 
-    /// The descriptor never leaves the serial queue. Only String, Data, Bool,
-    /// and an error number cross the concurrency boundary.
+    /// The descriptor never leaves the script thread. Only String, Data,
+    /// Bool, and an error number cross the concurrency boundary.
     private func runSync(_ source: String) -> (descriptor: NSAppleEventDescriptor?, errorNumber: Int?) {
         let signpost = PerformanceSignposts.begin("AppleScript")
         defer { PerformanceSignposts.end("AppleScript", signpost) }
@@ -98,6 +137,7 @@ private final class ScriptRunner: @unchecked Sendable {
                 Logger.musicBar.error("AppleScript compile error: \(String(describing: error))")
                 return (nil, Self.errorNumber(in: error))
             }
+            if compiledScripts.count >= Self.maximumCachedScripts { compiledScripts.removeAll() }
             compiledScripts[source] = fresh
             script = fresh
         }
@@ -119,19 +159,66 @@ private final class ScriptRunner: @unchecked Sendable {
 @MainActor
 final class MusicController {
     /// Player that most recently reported activity; commands target it.
-    var activePlayer: PlayerApp = .appleMusic
+    /// Remembered across launches so a Spotify listener's first click
+    /// doesn't open Apple Music.
+    var activePlayer: PlayerApp {
+        didSet {
+            guard activePlayer != oldValue else { return }
+            UserDefaults.standard.set(activePlayer.rawValue, forKey: Self.lastPlayerKey)
+        }
+    }
+
+    /// Players macOS refused to let MusicBar control. The menu offers a way
+    /// to fix it while this isn't empty.
+    private(set) var permissionDeniedPlayers: Set<PlayerApp> = [] {
+        didSet { if permissionDeniedPlayers != oldValue { onPermissionChange?() } }
+    }
+    var onPermissionChange: (() -> Void)?
 
     private let scriptRunner = ScriptRunner()
-    private var permissionDeniedPlayers: Set<PlayerApp> = []
 
     private static let notPermittedError = -1743
-    private static let maximumArtworkBytes = 20 * 1_024 * 1_024
-    private static let maximumSearchResponseBytes = 1 * 1_024 * 1_024
+    private static let lastPlayerKey = "lastActivePlayer"
 
-    struct NowPlaying: Equatable {
-        let title: String
-        let artist: String
-        let isPlaying: Bool
+    init() {
+        activePlayer = Self.initialPlayer(
+            stored: UserDefaults.standard.string(forKey: Self.lastPlayerKey),
+            allowed: AppSettings.shared.playerMode.players,
+            installed: PlayerApp.allCases.filter(\.isInstalled)
+        )
+    }
+
+    /// The player used last time if it's still allowed, else the first
+    /// allowed player that is installed.
+    static func initialPlayer(stored: String?, allowed: [PlayerApp], installed: [PlayerApp]) -> PlayerApp {
+        if let stored, let player = PlayerApp(rawValue: stored), allowed.contains(player) {
+            return player
+        }
+        return allowed.first(where: installed.contains) ?? allowed.first ?? .appleMusic
+    }
+
+    /// Wraps `body` in a `tell` that only reaches a running player — a bare
+    /// `tell` relaunches one that quit a moment ago — and gives up after
+    /// `timeout` seconds instead of AppleScript's two minutes, so a player
+    /// stuck on a dialog can't hold up every later command.
+    static func script(for player: PlayerApp, timeout: Int = 5, _ body: String) -> String {
+        """
+        if application "\(player.scriptName)" is not running then error number -600
+        tell application "\(player.scriptName)"
+            with timeout of \(timeout) seconds
+                \(body)
+            end timeout
+        end tell
+        """
+    }
+
+    struct NowPlaying: Equatable, Sendable {
+        var title: String
+        var artist: String
+        var album: String = ""
+        /// Music persistent ID or Spotify URI; nil when the player gave none.
+        var trackID: String?
+        var isPlaying: Bool
     }
 
     struct Candidate {
@@ -155,13 +242,24 @@ final class MusicController {
 
     func seek(to position: TimeInterval) { send("set player position to \(position)") }
 
+    /// Whether a player's notification should take over the menu bar. A
+    /// paused or idle player must not displace the one that is playing.
+    static func shouldAdopt(
+        notificationFrom player: PlayerApp,
+        isPlaying: Bool,
+        activePlayer: PlayerApp,
+        activeIsPlaying: Bool
+    ) -> Bool {
+        player == activePlayer || isPlaying || !activeIsPlaying
+    }
+
     func fetchPlaybackModes() async -> PlaybackModes? {
         let player = activePlayer
         guard player.isRunning, !permissionDeniedPlayers.contains(player) else { return nil }
-        let source = player == .appleMusic
-            ? "tell application \"Music\" to return ((shuffle enabled) as text) & tab & ((song repeat) as text)"
-            : "tell application \"Spotify\" to return ((shuffling) as text) & tab & ((repeating) as text)"
-        let response = await scriptRunner.runString(source)
+        let body = player == .appleMusic
+            ? "return ((shuffle enabled) as text) & tab & ((song repeat) as text)"
+            : "return ((shuffling) as text) & tab & ((repeating) as text)"
+        let response = await scriptRunner.runString(Self.script(for: player, body))
         recordPermissionFailure(response.errorNumber, for: player)
         return response.value.flatMap(Self.parsePlaybackModes)
     }
@@ -192,15 +290,29 @@ final class MusicController {
     func changeVolume(by delta: Int) async -> Int? {
         let player = activePlayer
         guard player.isRunning else { return nil }
-        let source = """
-        tell application "\(player.scriptName)"
-            set sound volume to (sound volume + \(delta))
-            return sound volume as text
-        end tell
-        """
+        let source = Self.script(for: player, """
+        set sound volume to (sound volume + \(delta))
+        return sound volume as text
+        """)
         let response = await scriptRunner.runString(source)
         recordPermissionFailure(response.errorNumber, for: player)
         return response.value.flatMap { Int($0) }
+    }
+
+    func fetchVolume() async -> Int? {
+        let player = activePlayer
+        guard player.isRunning, !permissionDeniedPlayers.contains(player) else { return nil }
+        let response = await scriptRunner.runString(Self.script(for: player, "return sound volume as text"))
+        recordPermissionFailure(response.errorNumber, for: player)
+        return response.value.flatMap { Int($0) }
+    }
+
+    func setVolume(_ volume: Int) async {
+        let player = activePlayer
+        guard player.isRunning else { return }
+        let source = Self.script(for: player, "set sound volume to \(min(100, max(0, volume)))")
+        let response = await scriptRunner.runCommand(source)
+        recordPermissionFailure(response.errorNumber, for: player)
     }
 
     /// Sends a one-line command to the active player if it's running.
@@ -208,7 +320,7 @@ final class MusicController {
         let player = activePlayer
         guard player.isRunning else { return }
         permissionDeniedPlayers.remove(player)
-        let source = "tell application \"\(player.scriptName)\" to \(command)"
+        let source = Self.script(for: player, command)
         Task {
             let response = await scriptRunner.runCommand(source)
             recordPermissionFailure(response.errorNumber, for: player)
@@ -223,20 +335,18 @@ final class MusicController {
               PlayerApp.appleMusic.isRunning,
               !permissionDeniedPlayers.contains(.appleMusic)
         else { return nil }
-        let source = """
-        tell application "Music"
-            if player state is stopped then return ""
+        let source = Self.script(for: .appleMusic, """
+        if player state is stopped then return ""
+        try
+            return favorited of current track as text
+        on error
             try
-                return favorited of current track as text
+                return loved of current track as text
             on error
-                try
-                    return loved of current track as text
-                on error
-                    return ""
-                end try
+                return ""
             end try
-        end tell
-        """
+        end try
+        """)
         let response = await scriptRunner.runString(source)
         recordPermissionFailure(response.errorNumber, for: .appleMusic)
         switch response.value {
@@ -249,15 +359,13 @@ final class MusicController {
     /// Returns whether Music accepted the change.
     func setFavorited(_ favorited: Bool) async -> Bool {
         guard activePlayer == .appleMusic, PlayerApp.appleMusic.isRunning else { return false }
-        let source = """
-        tell application "Music"
-            try
-                set favorited of current track to \(favorited)
-            on error
-                set loved of current track to \(favorited)
-            end try
-        end tell
-        """
+        let source = Self.script(for: .appleMusic, """
+        try
+            set favorited of current track to \(favorited)
+        on error
+            set loved of current track to \(favorited)
+        end try
+        """)
         let response = await scriptRunner.runCommand(source)
         recordPermissionFailure(response.errorNumber, for: .appleMusic)
         return response.errorNumber == nil
@@ -270,15 +378,13 @@ final class MusicController {
               PlayerApp.appleMusic.isRunning,
               !permissionDeniedPlayers.contains(.appleMusic)
         else { return [] }
-        let source = """
-        tell application "Music"
-            set output to ""
-            repeat with aPlaylist in (every user playlist whose smart is false and special kind is none)
-                set output to output & (persistent ID of aPlaylist) & tab & (name of aPlaylist) & linefeed
-            end repeat
-            return output
-        end tell
-        """
+        let source = Self.script(for: .appleMusic, timeout: 15, """
+        set output to ""
+        repeat with aPlaylist in (every user playlist whose smart is false and special kind is none)
+            set output to output & (persistent ID of aPlaylist) & tab & (name of aPlaylist) & linefeed
+        end repeat
+        return output
+        """)
         let response = await scriptRunner.runString(source)
         recordPermissionFailure(response.errorNumber, for: .appleMusic)
         return response.value.map(Self.parsePlaylists) ?? []
@@ -294,8 +400,42 @@ final class MusicController {
         }
     }
 
-    private static func isPersistentID(_ id: some StringProtocol) -> Bool {
+    nonisolated static func isPersistentID(_ id: some StringProtocol) -> Bool {
         !id.isEmpty && id.allSatisfy(\.isHexDigit)
+    }
+
+    /// "spotify:track:ID" or "spotify:episode:ID" with a plain ID, safe to
+    /// put in a script.
+    nonisolated static func isSpotifyURI(_ uri: some StringProtocol) -> Bool {
+        let parts = uri.split(separator: ":", omittingEmptySubsequences: false)
+        return parts.count == 3
+            && parts[0] == "spotify"
+            && ["track", "episode"].contains(parts[1])
+            && !parts[2].isEmpty
+            && parts[2].allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber) }
+    }
+
+    /// Keeps an ID only in the shape its player uses; these end up inside
+    /// scripts, so nothing else gets through.
+    nonisolated static func validTrackID(_ id: String, for player: PlayerApp) -> String? {
+        switch player {
+        case .appleMusic: isPersistentID(id) ? id : nil
+        case .spotify: isSpotifyURI(id) ? id : nil
+        }
+    }
+
+    /// Track ID carried by a player's change notification. Music sends its
+    /// persistent ID as a signed 64-bit number; scripts know it as hex.
+    nonisolated static func trackID(fromNotification userInfo: [AnyHashable: Any], player: PlayerApp) -> String? {
+        switch player {
+        case .spotify:
+            return (userInfo["Track ID"] as? String).flatMap { validTrackID($0, for: .spotify) }
+        case .appleMusic:
+            let value = userInfo["PersistentID"]
+            let number = (value as? NSNumber)?.int64Value ?? (value as? String).flatMap { Int64($0) }
+            guard let number, number != 0 else { return nil }
+            return String(format: "%016llX", UInt64(bitPattern: number))
+        }
     }
 
     enum PlaylistAddResult { case added, notInLibrary, failed }
@@ -311,64 +451,64 @@ final class MusicController {
               PlayerApp.appleMusic.isRunning,
               Self.isPersistentID(playlist.id)
         else { return .failed }
-        let source = """
-        tell application "Music"
-            set targetPlaylist to first user playlist whose persistent ID is "\(playlist.id)"
-            set sourceTrack to current track
-            set trackID to persistent ID of sourceTrack
-            set trackName to name of sourceTrack
-            set trackArtist to artist of sourceTrack
-            set trackAlbum to album of sourceTrack
-            set matches to (every track of library playlist 1 whose persistent ID is trackID)
-            if matches is {} then set matches to (every track of library playlist 1 whose name is trackName and artist is trackArtist and album is trackAlbum)
-            if matches is {} then set matches to (every track of library playlist 1 whose name is trackName and artist is trackArtist)
-            set didFavorite to false
-            if matches is {} then
-                -- Favoriting is the only scripted way to put a streamed song
-                -- in the library (with Music's add-favorites setting on).
+        // One script on purpose: it keeps hold of the same track from the
+        // lookup to the restore, even if playback moves on meanwhile.
+        let source = Self.script(for: .appleMusic, timeout: 15, """
+        set targetPlaylist to first user playlist whose persistent ID is "\(playlist.id)"
+        set sourceTrack to current track
+        set trackID to persistent ID of sourceTrack
+        set trackName to name of sourceTrack
+        set trackArtist to artist of sourceTrack
+        set trackAlbum to album of sourceTrack
+        set matches to (every track of library playlist 1 whose persistent ID is trackID)
+        if matches is {} then set matches to (every track of library playlist 1 whose name is trackName and artist is trackArtist and album is trackAlbum)
+        if matches is {} then set matches to (every track of library playlist 1 whose name is trackName and artist is trackArtist)
+        set didFavorite to false
+        if matches is {} then
+            -- Favoriting is the only scripted way to put a streamed song
+            -- in the library (with Music's add-favorites setting on).
+            try
+                if not (favorited of sourceTrack) then
+                    set favorited of sourceTrack to true
+                    set didFavorite to true
+                end if
+            on error
                 try
-                    if not (favorited of sourceTrack) then
-                        set favorited of sourceTrack to true
+                    if not (loved of sourceTrack) then
+                        set loved of sourceTrack to true
                         set didFavorite to true
                     end if
-                on error
-                    try
-                        if not (loved of sourceTrack) then
-                            set loved of sourceTrack to true
-                            set didFavorite to true
-                        end if
-                    end try
                 end try
-                -- The library copy appears asynchronously.
-                repeat 20 times
-                    set matches to (every track of library playlist 1 whose name is trackName and artist is trackArtist)
-                    if matches is not {} then exit repeat
-                    delay 0.25
-                end repeat
-            end if
-            set addError to 0
-            if matches is not {} then
+            end try
+            -- The library copy appears asynchronously.
+            repeat 20 times
+                set matches to (every track of library playlist 1 whose name is trackName and artist is trackArtist)
+                if matches is not {} then exit repeat
+                delay 0.25
+            end repeat
+        end if
+        set addError to 0
+        if matches is not {} then
+            try
+                duplicate (item 1 of matches) to targetPlaylist
+            on error number errorNumber
+                set addError to errorNumber
+            end try
+        end if
+        -- Restore the favorite state even when the add failed.
+        if didFavorite then
+            try
+                set favorited of sourceTrack to false
+            on error
                 try
-                    duplicate (item 1 of matches) to targetPlaylist
-                on error number errorNumber
-                    set addError to errorNumber
+                    set loved of sourceTrack to false
                 end try
-            end if
-            -- Restore the favorite state even when the add failed.
-            if didFavorite then
-                try
-                    set favorited of sourceTrack to false
-                on error
-                    try
-                        set loved of sourceTrack to false
-                    end try
-                end try
-            end if
-            if matches is {} then return "notInLibrary"
-            if addError is not 0 then error number addError
-            return "added"
-        end tell
-        """
+            end try
+        end if
+        if matches is {} then return "notInLibrary"
+        if addError is not 0 then error number addError
+        return "added"
+        """)
         let response = await scriptRunner.runString(source)
         recordPermissionFailure(response.errorNumber, for: .appleMusic)
         switch response.value {
@@ -384,15 +524,13 @@ final class MusicController {
               PlayerApp.appleMusic.isRunning,
               !permissionDeniedPlayers.contains(.appleMusic)
         else { return [] }
-        let source = """
-        tell application "Music"
-            set output to ""
-            repeat with airPlayDevice in (every AirPlay device whose available is true)
-                set output to output & (persistent ID of airPlayDevice) & tab & ((selected of airPlayDevice) as text) & tab & (name of airPlayDevice) & linefeed
-            end repeat
-            return output
-        end tell
-        """
+        let source = Self.script(for: .appleMusic, """
+        set output to ""
+        repeat with airPlayDevice in (every AirPlay device whose available is true)
+            set output to output & (persistent ID of airPlayDevice) & tab & ((selected of airPlayDevice) as text) & tab & (name of airPlayDevice) & linefeed
+        end repeat
+        return output
+        """)
         let response = await scriptRunner.runString(source)
         recordPermissionFailure(response.errorNumber, for: .appleMusic)
         return response.value.map(Self.parseOutputDevices) ?? []
@@ -413,7 +551,10 @@ final class MusicController {
               PlayerApp.appleMusic.isRunning,
               Self.isPersistentID(device.id)
         else { return false }
-        let source = "tell application \"Music\" to set current AirPlay devices to {(first AirPlay device whose persistent ID is \"\(device.id)\")}"
+        let source = Self.script(
+            for: .appleMusic,
+            "set current AirPlay devices to {(first AirPlay device whose persistent ID is \"\(device.id)\")}"
+        )
         let response = await scriptRunner.runCommand(source)
         recordPermissionFailure(response.errorNumber, for: .appleMusic)
         return response.errorNumber == nil
@@ -422,12 +563,10 @@ final class MusicController {
     /// Brings Music forward with the current track selected.
     func revealCurrentTrack() {
         guard activePlayer == .appleMusic, PlayerApp.appleMusic.isRunning else { return }
-        let source = """
-        tell application "Music"
-            reveal current track
-            activate
-        end tell
-        """
+        let source = Self.script(for: .appleMusic, """
+        reveal current track
+        activate
+        """)
         Task {
             let response = await scriptRunner.runCommand(source)
             recordPermissionFailure(response.errorNumber, for: .appleMusic)
@@ -437,7 +576,7 @@ final class MusicController {
     /// Web link to Spotify's current track; Music exposes no shareable URL.
     func spotifyTrackLink() async -> URL? {
         guard activePlayer == .spotify, PlayerApp.spotify.isRunning else { return nil }
-        let response = await scriptRunner.runString("tell application \"Spotify\" to return spotify url of current track")
+        let response = await scriptRunner.runString(Self.script(for: .spotify, "return spotify url of current track"))
         recordPermissionFailure(response.errorNumber, for: .spotify)
         return response.value.flatMap(Self.spotifyWebURL(fromURI:))
     }
@@ -450,14 +589,34 @@ final class MusicController {
         return URL(string: "https://open.spotify.com/\(parts[1])/\(parts[2])")
     }
 
+    /// Plays a song from the history again. Music can only replay songs in
+    /// the library (scripts can't start a catalog song by ID); Spotify
+    /// plays any URI. Returns false when the song couldn't be started.
+    func play(_ track: RecentTrack) async -> Bool {
+        guard let player = track.player.flatMap(PlayerApp.init(rawValue:)),
+              let id = track.trackID.flatMap({ Self.validTrackID($0, for: player) }),
+              player.isRunning,
+              AppSettings.shared.playerMode.players.contains(player)
+        else { return false }
+        let body = switch player {
+        case .appleMusic: "play (first track of library playlist 1 whose persistent ID is \"\(id)\")"
+        case .spotify: "play track \"\(id)\""
+        }
+        let response = await scriptRunner.runCommand(Self.script(for: player, body))
+        recordPermissionFailure(response.errorNumber, for: player)
+        return response.errorNumber == nil
+    }
+
     func openPlayerApp() {
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: activePlayer.rawValue) else { return }
         NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
     }
 
     /// Checks the active player first, then prefers whichever player is
-    /// actually playing. Returns nil when neither has a track.
-    func fetchNowPlaying() async -> NowPlaying? {
+    /// actually playing. Returns nil when neither has a track. The caller
+    /// decides whether to make the winner the active player: a newer
+    /// notification may have settled that while the scripts ran.
+    func fetchNowPlaying() async -> Candidate? {
         let allowedPlayers = AppSettings.shared.playerMode.players
         if !allowedPlayers.contains(activePlayer), let first = allowedPlayers.first {
             activePlayer = first
@@ -467,7 +626,7 @@ final class MusicController {
 
         if let current = await fetchNowPlaying(from: currentPlayer) {
             let candidate = Candidate(player: currentPlayer, nowPlaying: current)
-            if current.isPlaying { return current }
+            if current.isPlaying { return candidate }
             candidates.append(candidate)
         }
 
@@ -477,11 +636,7 @@ final class MusicController {
             }
         }
 
-        guard let preferred = Self.preferredCandidate(from: candidates, activePlayer: currentPlayer) else {
-            return nil
-        }
-        activePlayer = preferred.player
-        return preferred.nowPlaying
+        return Self.preferredCandidate(from: candidates, activePlayer: currentPlayer)
     }
 
     static func preferredCandidate(from candidates: [Candidate], activePlayer: PlayerApp) -> Candidate? {
@@ -492,28 +647,41 @@ final class MusicController {
 
     private func fetchNowPlaying(from player: PlayerApp) async -> NowPlaying? {
         guard player.isRunning, !permissionDeniedPlayers.contains(player) else { return nil }
-        let source = """
-        tell application "\(player.scriptName)"
-            if player state is stopped then return ""
-            return (name of current track) & linefeed & (artist of current track) & linefeed & (player state as text)
-        end tell
-        """
+        let trackID = player == .appleMusic ? "persistent ID of current track" : "spotify url of current track"
+        // Title, artist and state are what the menu bar needs. The album
+        // and ID are extras, so a track that lacks one still shows up.
+        let source = Self.script(for: player, """
+        if player state is stopped then return ""
+        set trackAlbum to ""
+        try
+            set trackAlbum to album of current track
+        end try
+        set trackID to ""
+        try
+            set trackID to \(trackID)
+        end try
+        return (name of current track) & linefeed & (artist of current track) & linefeed & trackAlbum & linefeed & trackID & linefeed & (player state as text)
+        """)
         let response = await scriptRunner.runString(source)
         recordPermissionFailure(response.errorNumber, for: player)
         guard let result = response.value, !result.isEmpty else { return nil }
-        return Self.parseNowPlaying(result)
+        return Self.parseNowPlaying(result, from: player)
     }
 
-    /// Parses "title⏎artist⏎state". Fields are read from the end so a title
-    /// with a line break stays intact.
-    static func parseNowPlaying(_ result: String) -> NowPlaying? {
+    /// Parses "title⏎artist⏎album⏎id⏎state". Fields are read from the end so
+    /// a title with a line break stays intact.
+    static func parseNowPlaying(_ result: String, from player: PlayerApp) -> NowPlaying? {
         var parts = result.components(separatedBy: "\n")
-        guard parts.count >= 3 else { return nil }
+        guard parts.count >= 5 else { return nil }
         let state = parts.removeLast()
+        let trackID = parts.removeLast()
+        let album = parts.removeLast()
         let artist = parts.removeLast()
         return NowPlaying(
             title: parts.joined(separator: "\n"),
             artist: artist,
+            album: album,
+            trackID: validTrackID(trackID, for: player),
             isPlaying: state.caseInsensitiveCompare("playing") == .orderedSame
         )
     }
@@ -527,12 +695,10 @@ final class MusicController {
         let durationMilliseconds = player == .spotify
             ? "duration of current track"
             : "(duration of current track) * 1000"
-        let source = """
-        tell application "\(player.scriptName)"
-            if player state is stopped then return ""
-            return ((player position * 1000) as integer as text) & linefeed & ((\(durationMilliseconds)) as integer as text)
-        end tell
-        """
+        let source = Self.script(for: player, """
+        if player state is stopped then return ""
+        return ((player position * 1000) as integer as text) & linefeed & ((\(durationMilliseconds)) as integer as text)
+        """)
         let response = await scriptRunner.runString(source)
         recordPermissionFailure(response.errorNumber, for: player)
         guard let parts = response.value?.components(separatedBy: "\n"),
@@ -602,17 +768,20 @@ final class MusicController {
             URLQueryItem(name: "limit", value: "5"),
         ]
         guard let url = components.url,
-              let data = await downloadData(from: url, maximumBytes: Self.maximumSearchResponseBytes),
+              let data = await ArtworkDownloader.data(
+                  from: url,
+                  maximumBytes: ArtworkDownloader.maximumSearchResponseBytes
+              ),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let results = json["results"] as? [[String: Any]],
               let match = Self.searchResult(in: results, matchingArtist: artist),
               let artworkURLString = match["artworkUrl100"] as? String,
               let artworkURL = URL(string: artworkURLString.replacingOccurrences(of: "100x100", with: "600x600")),
-              artworkURL.scheme == "https"
+              ArtworkDownloader.isTrustedArtworkURL(artworkURL)
         else { return nil }
-        return await downloadData(
+        return await ArtworkDownloader.data(
             from: artworkURL,
-            maximumBytes: Self.maximumArtworkBytes,
+            maximumBytes: ArtworkDownloader.maximumArtworkBytes,
             requiredMIMEPrefix: "image/"
         )
     }
@@ -631,21 +800,19 @@ final class MusicController {
         guard PlayerApp.appleMusic.isRunning,
               !permissionDeniedPlayers.contains(.appleMusic)
         else { return nil }
-        let source = """
-        tell application "Music"
-            if player state is stopped then return ""
-            try
-                return data of artwork 1 of current track
-            on error
-                return ""
-            end try
-        end tell
-        """
+        let source = Self.script(for: .appleMusic, timeout: 15, """
+        if player state is stopped then return ""
+        try
+            return data of artwork 1 of current track
+        on error
+            return ""
+        end try
+        """)
         let response = await scriptRunner.runData(source)
         recordPermissionFailure(response.errorNumber, for: .appleMusic)
         guard let data = response.value,
               !data.isEmpty,
-              data.count <= Self.maximumArtworkBytes
+              data.count <= ArtworkDownloader.maximumArtworkBytes
         else { return nil }
         return data
     }
@@ -655,50 +822,21 @@ final class MusicController {
         guard PlayerApp.spotify.isRunning,
               !permissionDeniedPlayers.contains(.spotify)
         else { return nil }
-        let source = """
-        tell application "Spotify"
-            if player state is stopped then return ""
-            return artwork url of current track
-        end tell
-        """
+        let source = Self.script(for: .spotify, """
+        if player state is stopped then return ""
+        return artwork url of current track
+        """)
         let response = await scriptRunner.runString(source)
         recordPermissionFailure(response.errorNumber, for: .spotify)
         guard let urlString = response.value,
               let url = URL(string: urlString),
-              url.scheme == "https"
+              ArtworkDownloader.isTrustedArtworkURL(url)
         else { return nil }
-        return await downloadData(
+        return await ArtworkDownloader.data(
             from: url,
-            maximumBytes: Self.maximumArtworkBytes,
+            maximumBytes: ArtworkDownloader.maximumArtworkBytes,
             requiredMIMEPrefix: "image/"
         )
-    }
-
-    private func downloadData(
-        from url: URL,
-        maximumBytes: Int,
-        requiredMIMEPrefix: String? = nil
-    ) async -> Data? {
-        var request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 15)
-        request.allowsExpensiveNetworkAccess = true
-
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard !Task.isCancelled,
-                  let http = response as? HTTPURLResponse,
-                  (200..<300).contains(http.statusCode),
-                  response.expectedContentLength <= Int64(maximumBytes),
-                  data.count <= maximumBytes
-            else { return nil }
-            if let requiredMIMEPrefix,
-               let mimeType = response.mimeType,
-               !mimeType.hasPrefix(requiredMIMEPrefix) {
-                return nil
-            }
-            return data
-        } catch {
-            return nil
-        }
     }
 
     /// Decoding forces image work, so it runs off the main actor and follows

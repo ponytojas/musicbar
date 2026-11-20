@@ -15,13 +15,11 @@
 "Fixed color" = "Fixed color";
 "Random colors" = "Random colors";
 "Custom color" = "Custom color";
-"Title width" = "Title width";
 "Auto-scroll after" = "Auto-scroll after";
 "5 seconds" = "5 seconds";
 "10 seconds" = "10 seconds";
 "20 seconds" = "20 seconds";
 "30 seconds" = "30 seconds";
-"Long titles always start scrolling when you hover the menu bar item." = "Long titles always start scrolling when you hover the menu bar item.";
 "MusicBar Settings" = "MusicBar Settings";
 
 /* Menu */
@@ -108,12 +106,84 @@
 "Copy title and artist" = "Copy title and artist";
 
 /* Keyboard shortcuts */
-"Keyboard" = "Keyboard";
 "Global shortcuts" = "Global shortcuts";
-"⌃⌥⌘M shows the card, ⌃⌥⌘F favorites the song, and ⌃⌥⌘P adds it to a playlist." = "⌃⌥⌘M shows the card, ⌃⌥⌘F favorites the song, and ⌃⌥⌘P adds it to a playlist.";
 "Added to Favorites" = "Added to Favorites";
 "Removed from Favorites" = "Removed from Favorites";
 
 /* Notifications */
 "Notifications" = "Notifications";
 "Notify when the song changes" = "Notify when the song changes";
+
+/* Settings tabs and sections */
+"General" = "General";
+"Shortcuts" = "Shortcuts";
+"Show" = "Show";
+"Title" = "Title";
+"Pointer" = "Pointer";
+"Updates" = "Updates";
+"Version" = "Version";
+"Style" = "Style";
+
+/* Menu bar settings */
+"Show title" = "Show title";
+"Shrink to fit short titles" = "Shrink to fit short titles";
+"Maximum title width" = "Maximum title width";
+"%lld pt" = "%lld pt";
+"Long titles scroll on their own while music plays, and whenever you hover the menu bar item." = "Long titles scroll on their own while music plays, and whenever you hover the menu bar item.";
+"Show the card on hover" = "Show the card on hover";
+"Scroll to change the volume" = "Scroll to change the volume";
+"Double-click opens the player" = "Double-click opens the player";
+"With double-click on, a single click waits a moment before it plays or pauses, to tell the two apart." = "With double-click on, a single click waits a moment before it plays or pauses, to tell the two apart.";
+
+/* Equalizer styles */
+"Frequency bands" = "Frequency bands";
+"Loudness" = "Loudness";
+"Simulated" = "Simulated";
+"Bass on the left, treble on the right, from the player's own audio." = "Bass on the left, treble on the right, from the player's own audio.";
+"How loud the player's audio is, moment to moment." = "How loud the player's audio is, moment to moment.";
+"Decorative movement. MusicBar doesn't listen to any audio, so macOS asks for no recording permission." = "Decorative movement. MusicBar doesn't listen to any audio, so macOS asks for no recording permission.";
+"Equalizer Is Simulated…" = "Equalizer Is Simulated…";
+"The equalizer is showing simulated movement" = "The equalizer is showing simulated movement";
+"MusicBar couldn't listen to the player's audio. Allow it under System Audio Recording Only in Privacy & Security, or choose the Simulated style in Settings to stop it trying." = "MusicBar couldn't listen to the player's audio. Allow it under System Audio Recording Only in Privacy & Security, or choose the Simulated style in Settings to stop it trying.";
+
+/* Shortcut recorder */
+"Show or hide the card" = "Show or hide the card";
+"Favorite the song" = "Favorite the song";
+"Add the song to a playlist" = "Add the song to a playlist";
+"Play or pause" = "Play or pause";
+"Press shortcut…" = "Press shortcut…";
+"None" = "None";
+"Another app is already using this shortcut." = "Another app is already using this shortcut.";
+"Click a shortcut, then press the new keys with ⌃, ⌥ or ⌘. Delete clears it and Esc cancels." = "Click a shortcut, then press the new keys with ⌃, ⌥ or ⌘. Delete clears it and Esc cancels.";
+
+/* Notification settings */
+"Notifications are turned off for MusicBar in System Settings." = "Notifications are turned off for MusicBar in System Settings.";
+"Open Notification Settings" = "Open Notification Settings";
+
+/* Updates */
+"Check for updates automatically" = "Check for updates automatically";
+"Asks GitHub for the latest release once a day. You can also check from the menu." = "Asks GitHub for the latest release once a day. You can also check from the menu.";
+"Check for Updates…" = "Check for Updates…";
+"Update Available: %@…" = "Update Available: %@…";
+"MusicBar %@ is available" = "MusicBar %@ is available";
+"MusicBar is up to date" = "MusicBar is up to date";
+"You have version %@." = "You have version %@.";
+"Open Download Page" = "Open Download Page";
+"Couldn't check for updates" = "Couldn't check for updates";
+
+/* Context menu additions */
+"Allow MusicBar to Control %@…" = "Allow MusicBar to Control %@…";
+"MusicBar needs permission to control the player" = "MusicBar needs permission to control the player";
+"Clear Recently Played" = "Clear Recently Played";
+"Play again" = "Play again";
+"Copied title and artist" = "Copied title and artist";
+"Link copied" = "Link copied";
+"When the Song Ends" = "When the Song Ends";
+"Show Menu" = "Show Menu";
+
+/* Card volume */
+"Volume" = "Volume";
+
+/* Main menu */
+"Window" = "Window";
+"Close" = "Close";

@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import Combine
 import SwiftUI
 
@@ -11,17 +12,45 @@ struct PopupActions {
     var toggleFavorite: @MainActor () -> Void
     var addToPlaylist: @MainActor (Playlist) -> Void
     var seek: @MainActor (TimeInterval) -> Void
+    /// Absolute volume, 0...100, from the card's slider.
+    var setVolume: @MainActor (Int) -> Void
+    /// Relative volume step, from the keyboard.
+    var changeVolume: @MainActor (Int) -> Void
     var toggleShuffle: @MainActor () -> Void
     var cycleRepeat: @MainActor () -> Void
     var selectOutput: @MainActor (OutputDevice) -> Void
 }
 
+/// The card's window. It never takes the keyboard from the app in front
+/// when shown by hovering; only a card opened with the shortcut becomes
+/// key, so its controls can be worked without the pointer.
+private final class CardPanel: NSPanel {
+    var allowsKey = false
+    var onKeyDown: ((NSEvent) -> Bool)?
+    var onResignKey: (() -> Void)?
+
+    override var canBecomeKey: Bool { allowsKey }
+
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .keyDown, onKeyDown?(event) == true { return }
+        super.sendEvent(event)
+    }
+
+    override func resignKey() {
+        super.resignKey()
+        onResignKey?()
+    }
+}
+
 /// Floating "now playing" card shown under the status item while the mouse
 /// hovers it. The pointer can move onto the card to use its controls; the
-/// card hides once the pointer has left both. Never takes focus.
+/// card hides once the pointer has left both. Opened with the keyboard
+/// shortcut instead, it takes key presses: Space plays or pauses, ← and →
+/// change track, ↑ and ↓ the volume, F favorites, S shuffles, R repeats,
+/// and Esc closes it.
 @MainActor
 final class HoverPopupController {
-    private var panel: NSPanel?
+    private var panel: CardPanel?
     private var showTask: Task<Void, Never>?
     private var hideTask: Task<Void, Never>?
     private let model: TrackModel
@@ -103,29 +132,75 @@ final class HoverPopupController {
 
     /// Opens the card without hovering, e.g. from a keyboard shortcut. It
     /// stays up at least `seconds` (and while a notice shows), then follows
-    /// the usual pointer rules.
-    func present(relativeTo button: NSStatusBarButton?, pinnedFor seconds: TimeInterval = 0) {
+    /// the usual pointer rules. `takingKeyboard` also sends it key presses.
+    func present(
+        relativeTo button: NSStatusBarButton?,
+        pinnedFor seconds: TimeInterval = 0,
+        takingKeyboard: Bool = false
+    ) {
         guard model.hasTrack else { return }
         showTask?.cancel()
         hideTask?.cancel()
-        pinTask?.cancel()
-        pinnedUntil = nil
-        if seconds > 0 {
-            pinnedUntil = Date().addingTimeInterval(seconds)
-            pinTask = Task { @MainActor [weak self] in
-                try? await Task.sleep(for: .seconds(seconds))
-                guard !Task.isCancelled, let self else { return }
-                self.pinnedUntil = nil
-                self.scheduleHideCheck()
-            }
+        pin(for: seconds)
+        if !isShown {
+            onWillShow()
+            show(relativeTo: button)
         }
-        guard !isShown else { return }
-        onWillShow()
-        show(relativeTo: button)
+        if takingKeyboard, let panel, panel.isVisible {
+            panel.allowsKey = true
+            panel.makeKey()
+        }
     }
 
     func togglePresented(relativeTo button: NSStatusBarButton?) {
-        if isShown { dismiss() } else { present(relativeTo: button, pinnedFor: 5) }
+        if isShown {
+            dismiss()
+        } else {
+            present(relativeTo: button, pinnedFor: Self.keyboardPin, takingKeyboard: true)
+        }
+    }
+
+    /// How long a keyboard-opened card waits for the next key press.
+    private static let keyboardPin: TimeInterval = 5
+
+    /// Keeps the card up for `seconds` whatever the pointer does; 0 unpins.
+    private func pin(for seconds: TimeInterval) {
+        pinTask?.cancel()
+        pinnedUntil = nil
+        guard seconds > 0 else { return }
+        pinnedUntil = Date().addingTimeInterval(seconds)
+        pinTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(seconds))
+            guard !Task.isCancelled, let self else { return }
+            self.pinnedUntil = nil
+            self.scheduleHideCheck()
+        }
+    }
+
+    /// Key presses for a card opened from the keyboard. Returns false for
+    /// keys it has no use for, so they aren't swallowed.
+    private func handleKeyDown(_ event: NSEvent) -> Bool {
+        guard event.modifierFlags.intersection([.command, .control, .option]).isEmpty else { return false }
+        switch Int(event.keyCode) {
+        case kVK_Escape:
+            dismiss()
+            return true
+        case kVK_Space: actions.playPause()
+        case kVK_LeftArrow: actions.previous()
+        case kVK_RightArrow: actions.next()
+        case kVK_UpArrow: actions.changeVolume(5)
+        case kVK_DownArrow: actions.changeVolume(-5)
+        default:
+            switch event.charactersIgnoringModifiers?.lowercased() {
+            case "f" where model.isFavorited != nil: actions.toggleFavorite()
+            case "s": actions.toggleShuffle()
+            case "r": actions.cycleRepeat()
+            default: return false
+            }
+        }
+        // Each key press buys the card more time.
+        pin(for: Self.keyboardPin)
+        return true
     }
 
     private func show(relativeTo button: NSStatusBarButton?) {
@@ -211,13 +286,14 @@ final class HoverPopupController {
     }
 
     private func hide() {
+        panel?.allowsKey = false
         panel?.orderOut(nil)
         // Drops the timer-driven progress views while nobody can see them.
         if model.progress != nil { model.progress = nil }
     }
 
-    private func makePanel() -> NSPanel {
-        let panel = NSPanel(
+    private func makePanel() -> CardPanel {
+        let panel = CardPanel(
             contentRect: .zero,
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
@@ -230,6 +306,15 @@ final class HoverPopupController {
         panel.hidesOnDeactivate = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.contentView = hostingView
+        panel.onKeyDown = { [weak self] event in self?.handleKeyDown(event) ?? false }
+        // Clicking elsewhere ends keyboard mode; the pointer rules decide
+        // from there.
+        panel.onResignKey = { [weak self] in
+            guard let self else { return }
+            self.panel?.allowsKey = false
+            self.pin(for: 0)
+            self.scheduleHideCheck()
+        }
         return panel
     }
 }
@@ -244,6 +329,12 @@ struct HoverPopupView: View {
 
     private var coverImage: NSImage? { model.artworkLarge ?? model.artwork }
 
+    /// Where along the progress bar a click or drag at `x` lands, 0...1.
+    static func seekFraction(x: CGFloat, width: CGFloat) -> Double {
+        guard width > 0 else { return 0 }
+        return Double(min(max(x / width, 0), 1))
+    }
+
     var body: some View {
         VStack(spacing: 12) {
             cover
@@ -257,14 +348,18 @@ struct HoverPopupView: View {
                 .shadow(color: .black.opacity(0.35), radius: 10, y: 5)
 
             VStack(spacing: 3) {
+                // One line each keeps the card's height fixed; the tooltip
+                // has the rest of a long title.
                 Text(model.title)
                     .font(.system(size: 13, weight: .semibold))
                     .lineLimit(1)
+                    .help(model.title)
                 // Always laid out so a missing artist doesn't shrink the card.
-                Text(model.artist.isEmpty ? " " : model.artist)
+                Text(model.artistAndAlbum.isEmpty ? " " : model.artistAndAlbum)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    .help(model.artistAndAlbum)
             }
             .multilineTextAlignment(.center)
             .frame(width: coverSize)
@@ -322,12 +417,16 @@ struct HoverPopupView: View {
 /// Thin bar with elapsed and total time, or a notice in place of the times.
 /// Always takes the same space so the card never changes height: with no
 /// position (radio, or before it loads) the bar is hidden, not removed.
-/// While playing, the timer-interval views advance on their own.
+/// While playing, the timer-interval views advance on their own. Click or
+/// drag along the bar to seek; the song jumps when the drag ends.
 private struct ProgressRow: View {
     let progress: PlaybackProgress?
     let isPlaying: Bool
     let notice: String?
     let onSeek: @MainActor (TimeInterval) -> Void
+
+    /// Position under the pointer during a drag, 0...1.
+    @State private var dragFraction: Double?
 
     var body: some View {
         VStack(spacing: 3) {
@@ -336,11 +435,19 @@ private struct ProgressRow: View {
                 bar
                     .frame(maxHeight: .infinity)
                     .contentShape(Rectangle())
-                    .onTapGesture(coordinateSpace: .local) { location in
-                        guard let progress, geometry.size.width > 0 else { return }
-                        let fraction = min(max(location.x / geometry.size.width, 0), 1)
-                        onSeek(fraction * progress.duration)
-                    }
+                    .gesture(
+                        DragGesture(minimumDistance: 0, coordinateSpace: .local)
+                            .onChanged { value in
+                                guard progress != nil else { return }
+                                dragFraction = HoverPopupView.seekFraction(x: value.location.x, width: geometry.size.width)
+                            }
+                            .onEnded { value in
+                                dragFraction = nil
+                                guard let progress else { return }
+                                let fraction = HoverPopupView.seekFraction(x: value.location.x, width: geometry.size.width)
+                                onSeek(fraction * progress.duration)
+                            }
+                    )
             }
             .frame(height: 12)
             .opacity(progress == nil ? 0 : 1)
@@ -353,7 +460,9 @@ private struct ProgressRow: View {
                         .frame(maxWidth: .infinity)
                 } else if let progress {
                     HStack {
-                        if isPlaying {
+                        if let dragFraction {
+                            Text(Self.format(dragFraction * progress.duration))
+                        } else if isPlaying {
                             Text(timerInterval: progress.start...progress.end, countsDown: false)
                         } else {
                             Text(Self.format(progress.position))
@@ -372,7 +481,9 @@ private struct ProgressRow: View {
 
     @ViewBuilder
     private var bar: some View {
-        if let progress, isPlaying {
+        if let progress, let dragFraction {
+            ProgressView(value: dragFraction * progress.duration, total: progress.duration)
+        } else if let progress, isPlaying {
             ProgressView(timerInterval: progress.start...progress.end, countsDown: false) {
                 EmptyView()
             } currentValueLabel: {
@@ -470,7 +581,21 @@ private struct UtilityRow: View {
                     action: actions.cycleRepeat
                 )
             }
-            Spacer(minLength: 0)
+            if let volume = model.volume {
+                Slider(
+                    value: Binding(
+                        get: { Double(volume) },
+                        set: { actions.setVolume(Int($0.rounded())) }
+                    ),
+                    in: 0...100
+                )
+                .controlSize(.mini)
+                .padding(.horizontal, 6)
+                .help(Text("Volume"))
+                .accessibilityLabel(Text("Volume"))
+            } else {
+                Spacer(minLength: 0)
+            }
             // Only worth a menu when there's somewhere else to play.
             if model.outputDevices.count > 1 {
                 outputMenu

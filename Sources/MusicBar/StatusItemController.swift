@@ -1,41 +1,41 @@
 import AppKit
 import Combine
 import SwiftUI
-import UserNotifications
 
+/// Owns the menu bar item and keeps it in step with the players. This file
+/// is the state: what is playing, its cover, the equalizer. The card's
+/// controls, pointer and keyboard input, and the context menu are in the
+/// +Card, +Input and +Menu extensions.
 @MainActor
 final class StatusItemController: NSObject {
-    private let statusItem: NSStatusItem
-    private let music = MusicController()
-    private let model = TrackModel()
+    let statusItem: NSStatusItem
+    let music = MusicController()
+    let model = TrackModel()
+    let settingsWindow = SettingsWindowController()
     private let waveformModel = AudioWaveformModel()
-    private let settingsWindow = SettingsWindowController()
+    private let notifier = TrackNotifier()
     private lazy var waveformCapture = AudioWaveformCapture(
         onLevels: { [weak self] levels in
             Task { @MainActor [weak self] in self?.waveformModel.ingest(levels) }
         },
         onStopped: { [weak self] in
             Task { @MainActor [weak self] in self?.waveformModel.reset() }
+        },
+        onAvailability: { [weak self] available in
+            Task { @MainActor [weak self] in self?.captureAvailabilityChanged(available) }
         }
     )
-    private lazy var hoverPopup = HoverPopupController(
+    lazy var hoverPopup = HoverPopupController(
         model: model,
         actions: PopupActions(
-            playPause: { [weak self] in
-                self?.music.playPause()
-                self?.refreshSoon()
-            },
-            previous: { [weak self] in
-                self?.music.previousTrack()
-                self?.refreshSoon()
-            },
-            next: { [weak self] in
-                self?.music.nextTrack()
-                self?.refreshSoon()
-            },
+            playPause: { [weak self] in self?.togglePlayback() },
+            previous: { [weak self] in self?.skip(forward: false) },
+            next: { [weak self] in self?.skip(forward: true) },
             toggleFavorite: { [weak self] in self?.toggleFavorite() },
             addToPlaylist: { [weak self] playlist in self?.addCurrentTrack(to: playlist) },
             seek: { [weak self] position in self?.seek(to: position) },
+            setVolume: { [weak self] volume in self?.setVolume(volume) },
+            changeVolume: { [weak self] delta in self?.changeVolume(by: delta) },
             toggleShuffle: { [weak self] in self?.toggleShuffle() },
             cycleRepeat: { [weak self] in self?.cycleRepeat() },
             selectOutput: { [weak self] device in self?.selectOutput(device) }
@@ -44,31 +44,60 @@ final class StatusItemController: NSObject {
         self?.loadLargeArtworkIfNeeded()
         self?.loadPopupDetails(includePlaylists: true)
     }
+    lazy var sleepTimer: SleepTimer = SleepTimer(
+        onFire: { [weak self] in self?.music.pause() },
+        onChange: { [weak self] in
+            guard let self else { return }
+            self.model.sleepTimerActive = self.sleepTimer.isActive
+        }
+    )
 
-    private lazy var hotKeys = GlobalHotKeys { [weak self] action in self?.handleHotKey(action) }
+    lazy var hotKeys = GlobalHotKeys { [weak self] action in self?.handleHotKey(action) }
 
-    private var singleClickTimer: Timer?
-    private var scrollMonitor: Any?
-    private var scrollAccumulator: CGFloat = 0
+    var singleClickTimer: Timer?
+    var scrollMonitor: Any?
+    var scrollAccumulator: CGFloat = 0
     private var refreshTimer: Timer?
-    private var lastArtworkKey: String?
+    private var simulationTimer: Timer?
+    /// The song on display; nil with nothing queued.
+    private var currentTrack: TrackIdentity?
+    /// That song's key, fixed when it started: what in-flight work compares
+    /// against to learn the song changed under it.
+    private(set) var currentTrackKey: String?
+    /// Music persistent ID or Spotify URI of that song, when known.
+    private var currentTrackID: String?
     private var artworkSourceData: Data?
+    private var artworkAttempts = 0
     private var artworkTask: Task<Void, Never>?
     private var largeArtworkTask: Task<Void, Never>?
-    private var progressTask: Task<Void, Never>?
+    var progressTask: Task<Void, Never>?
     private var collapseTask: Task<Void, Never>?
-    private var noticeTask: Task<Void, Never>?
-    private var sleepTimerTask: Task<Void, Never>?
-    private var sleepTimerEnd: Date?
-    private var sleepTimerMinutes = 0
-    private var recentTracks = StatusItemController.loadRecentTracks()
+    var noticeTask: Task<Void, Never>?
+    var volumeTask: Task<Void, Never>?
+    var pendingVolumeDelta = 0
+    var pendingVolume: Int?
+    var recentTracks = StatusItemController.loadRecentTracks()
     private static let recentTracksKey = "recentTracks"
-    private var lastNotifiedKey: String?
+    /// The system couldn't start the audio capture (permission refused, no
+    /// audio process yet…); the bars run simulated until it can.
+    private(set) var captureFailed = false
+    /// A newer release found by an update check.
+    var availableUpdate: String?
     private var isRefreshing = false
+    private var refreshRequested = false
+    /// Bumped by every player notification. A refresh that was reading the
+    /// players meanwhile holds older news and steps aside.
+    private var stateGeneration = 0
+    /// The first refresh has landed; songs after it are "changes" worth a
+    /// notification, the one playing at launch isn't.
+    private var didInitialSync = false
     /// Post-command reconcile; cancelled when the player's own notification
     /// arrives first so we don't fetch the same state twice.
-    private var pendingReconcile: Task<Void, Never>?
+    var pendingReconcile: Task<Void, Never>?
     private var settingsCancellables: Set<AnyCancellable> = []
+
+    /// A song with no cover gets one more try, not one every reconcile.
+    private static let maximumArtworkAttempts = 2
 
     override init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -79,9 +108,15 @@ final class StatusItemController: NSObject {
         observePlayerNotifications()
         observePlayerLifecycle()
         observeScreenState()
-        observeWaveformSetting()
-        runFirstLaunchPermissionFlow()
-        Task { await refresh() }
+        observeSettings()
+        configureNotifications()
+        model.sleepTimerActive = sleepTimer.isActive
+        music.onPermissionChange = { [weak self] in self?.updateAccessibility() }
+        Task {
+            await AutomationPermission.prepare(for: PlayerApp.allCases.filter(\.isRunning))
+            await refresh()
+            checkForUpdatesIfDue()
+        }
 
         // Fallback reconciliation in case a notification is missed. Skipped
         // while the screen is locked/asleep; the wake handler reconciles.
@@ -89,6 +124,7 @@ final class StatusItemController: NSObject {
             Task { @MainActor in
                 guard let self, self.model.screenActive else { return }
                 await self.refresh()
+                self.checkForUpdatesIfDue()
             }
         }
         refreshTimer?.tolerance = 30
@@ -101,12 +137,34 @@ final class StatusItemController: NSObject {
         button.target = self
         button.action = #selector(handleClick)
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        // VoiceOver's Actions menu: what the pointer does with modifiers.
+        button.setAccessibilityCustomActions([
+            NSAccessibilityCustomAction(name: NSLocalizedString("Next Track", comment: "")) { [weak self] in
+                MainActor.assumeIsolated { self?.skip(forward: true) }
+                return true
+            },
+            NSAccessibilityCustomAction(name: NSLocalizedString("Previous Track", comment: "")) { [weak self] in
+                MainActor.assumeIsolated { self?.skip(forward: false) }
+                return true
+            },
+            NSAccessibilityCustomAction(name: NSLocalizedString("Show or hide the card", comment: "")) { [weak self] in
+                MainActor.assumeIsolated { self?.handleHotKey(.toggleCard) }
+                return true
+            },
+            NSAccessibilityCustomAction(name: NSLocalizedString("Show Menu", comment: "")) { [weak self] in
+                MainActor.assumeIsolated { self?.showContextMenu() }
+                return true
+            },
+        ])
 
         let hosting = HoverTrackingHostingView(rootView: StatusBarView(model: model, waveform: waveformModel))
         hosting.passesClicksThrough = true
         hosting.onHoverChange = { [weak self] hovering in
             guard let self else { return }
             self.model.isHovering = hovering
+            // Leaving always reaches the card, so one opened from the
+            // keyboard still closes by the pointer rules.
+            guard !hovering || AppSettings.shared.showHoverCard else { return }
             self.hoverPopup.setHovering(hovering, relativeTo: self.statusItem.button)
         }
         hosting.translatesAutoresizingMaskIntoConstraints = false
@@ -119,6 +177,12 @@ final class StatusItemController: NSObject {
         ])
     }
 
+    private func configureNotifications() {
+        notifier.onNextTrack = { [weak self] in self?.skip(forward: true) }
+        notifier.onOpenPlayer = { [weak self] in self?.music.openPlayerApp() }
+        notifier.install()
+    }
+
     private func observePlayerNotifications() {
         // Both players post on every play/pause/track change. No polling.
         for player in PlayerApp.allCases {
@@ -127,11 +191,17 @@ final class StatusItemController: NSObject {
                 object: nil,
                 queue: .main
             ) { [weak self] note in
-                let state = (note.userInfo?["Player State"] as? String) ?? "Stopped"
-                let title = (note.userInfo?["Name"] as? String) ?? ""
-                let artist = (note.userInfo?["Artist"] as? String) ?? ""
+                let userInfo = note.userInfo ?? [:]
+                let state = (userInfo["Player State"] as? String) ?? "Stopped"
+                let nowPlaying = MusicController.NowPlaying(
+                    title: (userInfo["Name"] as? String) ?? "",
+                    artist: (userInfo["Artist"] as? String) ?? "",
+                    album: (userInfo["Album"] as? String) ?? "",
+                    trackID: MusicController.trackID(fromNotification: userInfo, player: player),
+                    isPlaying: state == "Playing"
+                )
                 Task { @MainActor in
-                    self?.handlePlayerInfo(title: title, artist: artist, state: state, from: player)
+                    self?.handlePlayerInfo(nowPlaying, stopped: state == "Stopped", from: player)
                 }
             }
         }
@@ -152,7 +222,7 @@ final class StatusItemController: NSObject {
                     guard let self else { return }
                     self.music.clearPermissionFailures(for: player)
                     if name == NSWorkspace.didLaunchApplicationNotification {
-                        self.prepareAutomationPermissions(for: [player])
+                        await AutomationPermission.prepare(for: [player])
                         try? await Task.sleep(for: .milliseconds(500))
                     }
                     guard !Task.isCancelled else { return }
@@ -172,30 +242,42 @@ final class StatusItemController: NSObject {
         distributed.addObserver(self, selector: #selector(screenBecameActive), name: Notification.Name("com.apple.screenIsUnlocked"), object: nil)
     }
 
-    private func observeWaveformSetting() {
-        AppSettings.shared.$showEqualizer
+    private func observeSettings() {
+        let settings = AppSettings.shared
+        // @Published emits before the new value is stored, so each sink
+        // hops to the next main-actor turn and reads the settings there.
+        settings.$showEqualizer
             .removeDuplicates()
+            .combineLatest(settings.$equalizerStyle.removeDuplicates())
             .sink { [weak self] _ in
                 Task { @MainActor [weak self] in self?.updateWaveformCapture() }
             }
             .store(in: &settingsCancellables)
         model.$isPlaying
-            .combineLatest(AppSettings.shared.$collapseAfterPauseMinutes)
+            .combineLatest(settings.$collapseAfterPauseMinutes)
             .sink { [weak self] isPlaying, minutes in
                 Task { @MainActor [weak self] in self?.scheduleCollapse(isPlaying: isPlaying, minutes: minutes) }
             }
             .store(in: &settingsCancellables)
-        AppSettings.shared.$globalShortcuts
-            .removeDuplicates()
-            .sink { [weak self] enabled in
-                Task { @MainActor [weak self] in self?.hotKeys.setEnabled(enabled) }
+        settings.$globalShortcuts
+            .combineLatest(settings.$shortcuts, settings.$recordingShortcut)
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in self?.registerHotKeys() }
             }
             .store(in: &settingsCancellables)
-        AppSettings.shared.$playerMode
+        settings.$playerMode
             .dropFirst()
             .removeDuplicates()
             .sink { [weak self] _ in
                 Task { @MainActor [weak self] in await self?.refresh() }
+            }
+            .store(in: &settingsCancellables)
+        settings.$showHoverCard
+            .dropFirst()
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    if !AppSettings.shared.showHoverCard { self?.hoverPopup.dismiss() }
+                }
             }
             .store(in: &settingsCancellables)
         NSWorkspace.shared.notificationCenter.addObserver(
@@ -240,175 +322,196 @@ final class StatusItemController: NSObject {
         }
     }
 
-    // MARK: - Automation permission (first run)
-
-    private static let automationExplainedKey = "didExplainAutomation"
-    private static let automationPromptedPrefix = "didRequestAutomation."
-    private static let errNotPermitted: OSStatus = -1743
-    private static let errWouldRequireConsent: OSStatus = -1744
-
-    private func runFirstLaunchPermissionFlow() {
-        prepareAutomationPermissions(for: PlayerApp.allCases.filter(\.isRunning))
-    }
-
-    /// TCC grants Automation per controlled application. Explain once, then
-    /// request each player only the first time that player is encountered.
-    private func prepareAutomationPermissions(for players: [PlayerApp]) {
-        let defaults = UserDefaults.standard
-        let unprompted = players.filter {
-            !defaults.bool(forKey: Self.automationPromptedPrefix + $0.rawValue)
-        }
-        guard !unprompted.isEmpty else { return }
-
-        let statuses = Dictionary(uniqueKeysWithValues: unprompted.map {
-            ($0, automationPermission(for: $0.rawValue, askIfNeeded: false))
-        })
-
-        if statuses.values.contains(Self.errWouldRequireConsent),
-           !defaults.bool(forKey: Self.automationExplainedKey) {
-            showPermissionExplainer()
-            defaults.set(true, forKey: Self.automationExplainedKey)
-        }
-
-        var permissionDenied = false
-        for player in unprompted {
-            let status = statuses[player] ?? noErr
-            let finalStatus = status == Self.errWouldRequireConsent
-                ? automationPermission(for: player.rawValue, askIfNeeded: true)
-                : status
-            permissionDenied = permissionDenied || finalStatus == Self.errNotPermitted
-            defaults.set(true, forKey: Self.automationPromptedPrefix + player.rawValue)
-        }
-
-        if permissionDenied {
-            showPermissionDeniedAlert()
-        }
-    }
-
-    private func automationPermission(for bundleID: String, askIfNeeded: Bool) -> OSStatus {
-        let descriptor = NSAppleEventDescriptor(bundleIdentifier: bundleID)
-        guard let aeDesc = descriptor.aeDesc else { return noErr }
-        let wildcard = DescType(0x2A_2A_2A_2A) // '****'
-        return AEDeterminePermissionToAutomateTarget(aeDesc, wildcard, wildcard, askIfNeeded)
-    }
-
-    private func showPermissionExplainer() {
-        let alert = NSAlert()
-        alert.messageText = NSLocalizedString("MusicBar needs your permission", comment: "")
-        alert.informativeText = NSLocalizedString(
-            "MusicBar controls Music and Spotify with AppleScript to show the current track and toggle playback. macOS will now ask you to allow this.",
-            comment: ""
-        )
-        alert.addButton(withTitle: NSLocalizedString("Continue", comment: ""))
-        NSApp.activate()
-        alert.runModal()
-    }
-
-    private func showPermissionDeniedAlert() {
-        let alert = NSAlert()
-        alert.messageText = NSLocalizedString("Automation permission denied", comment: "")
-        alert.informativeText = NSLocalizedString(
-            "Without it MusicBar cannot read or control playback. Enable MusicBar under Automation in System Settings.",
-            comment: ""
-        )
-        alert.addButton(withTitle: NSLocalizedString("Open System Settings", comment: ""))
-        alert.addButton(withTitle: NSLocalizedString("Later", comment: ""))
-        NSApp.activate()
-        if alert.runModal() == .alertFirstButtonReturn,
-           let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation") {
-            NSWorkspace.shared.open(url)
-        }
-    }
-
     // MARK: - State
 
-    private func handlePlayerInfo(title: String, artist: String, state: String, from player: PlayerApp) {
+    private func handlePlayerInfo(_ nowPlaying: MusicController.NowPlaying, stopped: Bool, from player: PlayerApp) {
         guard AppSettings.shared.playerMode.players.contains(player) else { return }
         // The notification carries the fresh state; a pending post-command
         // reconcile would only re-fetch the same thing.
         pendingReconcile?.cancel()
         pendingReconcile = nil
 
-        if state == "Stopped" {
+        if stopped {
             // Another player might still be active; re-scan.
             if player == music.activePlayer { Task { await refresh() } }
             return
         }
-        music.activePlayer = player
-        model.update(
-            title: title,
-            artist: artist,
-            isPlaying: state == "Playing"
-        )
-        updateWaveformCapture()
-        refreshArtworkIfNeeded()
-        updateAccessibility()
+        guard MusicController.shouldAdopt(
+            notificationFrom: player,
+            isPlaying: nowPlaying.isPlaying,
+            activePlayer: music.activePlayer,
+            activeIsPlaying: model.isPlaying
+        ) else { return }
+
+        stateGeneration += 1
+        apply(nowPlaying, from: player)
         // Play/pause or a new track while the popup is open moves the clock.
         if hoverPopup.isShown { loadPopupDetails(includePlaylists: false) }
     }
 
-    private func refresh() async {
-        // Coalesce: a refresh already in flight will land the same state.
-        guard !isRefreshing else { return }
+    /// Reads the players directly. Calls made while one is running fold
+    /// into a single follow-up pass, so the last request is never lost.
+    func refresh() async {
+        guard !isRefreshing else {
+            refreshRequested = true
+            return
+        }
         let signpost = PerformanceSignposts.begin("Player Refresh")
         defer { PerformanceSignposts.end("Player Refresh", signpost) }
         isRefreshing = true
         defer { isRefreshing = false }
 
-        if let nowPlaying = await music.fetchNowPlaying() {
-            model.update(title: nowPlaying.title, artist: nowPlaying.artist, isPlaying: nowPlaying.isPlaying)
-            updateWaveformCapture()
-            refreshArtworkIfNeeded()
-        } else {
-            waveformCapture.capture(nil)
-            cancelArtworkWork()
-            model.clear()
-            lastArtworkKey = nil
-        }
+        repeat {
+            refreshRequested = false
+            let generation = stateGeneration
+            let candidate = await music.fetchNowPlaying()
+            // A notification landed while the scripts ran: it is newer.
+            guard generation == stateGeneration else { continue }
+            if let candidate {
+                apply(candidate.nowPlaying, from: candidate.player)
+            } else {
+                model.clear()
+                currentTrackID = nil
+                updateWaveformCapture()
+                trackDidUpdate()
+                updateAccessibility()
+            }
+        } while refreshRequested
+        didInitialSync = true
+    }
+
+    private func apply(_ nowPlaying: MusicController.NowPlaying, from player: PlayerApp) {
+        // More news about the song on display may leave the album or ID
+        // out; don't let that erase what is already known.
+        let incoming = TrackIdentity(
+            player: player,
+            title: nowPlaying.title,
+            artist: nowPlaying.artist,
+            album: nowPlaying.album
+        )
+        let sameSong = incoming.flatMap { new in currentTrack.map(new.isSameSong(as:)) } ?? false
+        music.activePlayer = player
+        model.update(
+            title: nowPlaying.title,
+            artist: nowPlaying.artist,
+            album: sameSong && nowPlaying.album.isEmpty ? model.album : nowPlaying.album,
+            isPlaying: nowPlaying.isPlaying
+        )
+        if !sameSong || nowPlaying.trackID != nil { currentTrackID = nowPlaying.trackID }
+        updateWaveformCapture()
+        trackDidUpdate()
         updateAccessibility()
     }
+
+    /// Runs after every state update: notices a new song, or gives a song
+    /// whose cover failed to load another try.
+    private func trackDidUpdate() {
+        let track = TrackIdentity(
+            player: music.activePlayer,
+            title: model.title,
+            artist: model.artist,
+            album: model.album
+        )
+        if let track, let currentTrack, track.isSameSong(as: currentTrack) {
+            // Remember an album that arrived late, without a new key.
+            if currentTrack.album.isEmpty { self.currentTrack = track }
+            if model.artwork == nil, artworkTask == nil, artworkAttempts < Self.maximumArtworkAttempts {
+                loadArtwork(notify: false)
+            }
+            return
+        }
+        guard track != nil || currentTrack != nil else { return }
+        currentTrack = track
+        let key = track?.key
+        currentTrackKey = key
+        cancelArtworkWork()
+        artworkAttempts = 0
+        model.artwork = nil
+        model.artworkLarge = nil
+        model.isFavorited = nil
+        sleepTimer.trackDidChange()
+        guard key != nil else { return }
+        recordRecentTrack()
+        let notify = didInitialSync && model.isPlaying && AppSettings.shared.notifyOnTrackChange
+        loadArtwork(notify: notify)
+    }
+
+    // MARK: - Equalizer
 
     /// Keep the system-audio tap alive only while its pixels are visible and
     /// moving. Pausing, hiding the equalizer, locking the screen, or turning on
     /// Reduce Motion (static bars) tears down the aggregate device and its
-    /// realtime callback.
+    /// realtime callback. The simulated style never opens a tap at all.
     private func updateWaveformCapture() {
-        let shouldCapture = AppSettings.shared.showEqualizer
+        let style = AppSettings.shared.equalizerStyle
+        let shouldCapture = equalizerIsMoving && style.capturesAudio
+        waveformCapture.capture(shouldCapture ? music.activePlayer : nil, spectrum: style == .spectrum)
+        // Nothing is being attempted any more, so nothing is failing.
+        if !shouldCapture { captureFailed = false }
+        updateSimulation()
+    }
+
+    private var equalizerIsMoving: Bool {
+        AppSettings.shared.showEqualizer
             && model.isPlaying
             && model.screenActive
             && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        waveformCapture.capture(shouldCapture ? music.activePlayer : nil)
     }
 
-    /// Fetch cover art only when the track actually changed — playerInfo
-    /// notifications also fire on plain play/pause.
-    private func refreshArtworkIfNeeded() {
-        let key = "\(music.activePlayer.rawValue)|\(model.title)|\(model.artist)"
-        guard key != lastArtworkKey else { return }
-        artworkTask?.cancel()
-        largeArtworkTask?.cancel()
-        artworkTask = nil
-        largeArtworkTask = nil
-        artworkSourceData = nil
-        model.artwork = nil
-        model.artworkLarge = nil
-        model.isFavorited = nil
-        lastArtworkKey = key
-        if model.hasTrack { recordRecentTrack() }
-        notifyTrackChangeIfNeeded(key: key)
+    private func captureAvailabilityChanged(_ available: Bool) {
+        captureFailed = !available
+        // Not updateWaveformCapture(): that would retry a failing capture
+        // in a loop. The next play/pause or track change retries it.
+        updateSimulation()
+    }
+
+    /// Drives the bars from a timer when they aren't fed real audio: the
+    /// simulated style, or a capture the system refused.
+    private func updateSimulation() {
+        let simulate = equalizerIsMoving && (!AppSettings.shared.equalizerStyle.capturesAudio || captureFailed)
+        guard simulate != (simulationTimer != nil) else { return }
+        simulationTimer?.invalidate()
+        simulationTimer = nil
+        guard simulate else {
+            if !equalizerIsMoving { waveformModel.reset() }
+            return
+        }
+        simulationTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 15, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.waveformModel.ingest(SimulatedWaveform.levels(at: Date.timeIntervalSinceReferenceDate))
+            }
+        }
+        simulationTimer?.tolerance = 0.01
+    }
+
+    // MARK: - Artwork
+
+    private func loadArtwork(notify: Bool) {
+        guard let key = currentTrackKey else { return }
+        artworkAttempts += 1
         let title = model.title
         let artist = model.artist
+        let album = model.album
         artworkTask = Task { @MainActor [weak self] in
             guard let self else { return }
             let artwork = await self.music.fetchArtwork(title: title, artist: artist)
-            guard !Task.isCancelled else { return }
             // The track may have changed while the artwork was loading.
-            guard self.lastArtworkKey == key else { return }
+            guard !Task.isCancelled, self.currentTrackKey == key else { return }
+            // Only while this is still the song on display: after a change
+            // the property already belongs to the next song's task.
+            defer {
+                if self.currentTrackKey == key { self.artworkTask = nil }
+            }
+            // Sent now rather than at the change so the banner has its
+            // cover; a song skipped before this never gets one.
+            if notify {
+                self.notifier.post(title: title, artist: artist, album: album, artworkData: artwork?.encodedData)
+            }
             if let artwork, self.popupWanted {
                 // The card is open or opening: decode its cover first and
                 // publish both together so it never shows the thumbnail.
                 let large = await MusicController.decodeArtwork(from: artwork.encodedData, maxPixelSize: 512)
-                guard !Task.isCancelled, self.lastArtworkKey == key else { return }
+                guard !Task.isCancelled, self.currentTrackKey == key else { return }
                 self.model.artworkLarge = large
                 // Keep the data so a failed decode can retry on the next open.
                 if large == nil { self.artworkSourceData = artwork.encodedData }
@@ -416,36 +519,6 @@ final class StatusItemController: NSObject {
                 self.artworkSourceData = artwork?.encodedData
             }
             self.model.artwork = artwork?.thumbnail
-            // A transient failure may retry on the next reconciliation.
-            if artwork == nil { self.lastArtworkKey = nil }
-        }
-    }
-
-    /// Banner for a new song, e.g. while the menu bar is hidden in full
-    /// screen. Skips the song already playing at launch.
-    private func notifyTrackChangeIfNeeded(key: String) {
-        defer { lastNotifiedKey = key }
-        guard AppSettings.shared.notifyOnTrackChange,
-              let lastNotifiedKey, lastNotifiedKey != key,
-              model.hasTrack, model.isPlaying
-        else { return }
-        let content = UNMutableNotificationContent()
-        content.title = model.title
-        content.body = model.artist
-        // One identifier, so each song replaces the previous banner.
-        let request = UNNotificationRequest(identifier: "track-change", content: content, trigger: nil)
-        UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
-    }
-
-    private static func loadRecentTracks() -> [RecentTrack] {
-        guard let data = UserDefaults.standard.data(forKey: recentTracksKey) else { return [] }
-        return (try? JSONDecoder().decode([RecentTrack].self, from: data)) ?? []
-    }
-
-    private func recordRecentTrack() {
-        recentTracks = RecentTrack.adding(RecentTrack(title: model.title, artist: model.artist), to: recentTracks)
-        if let data = try? JSONEncoder().encode(recentTracks) {
-            UserDefaults.standard.set(data, forKey: Self.recentTracksKey)
         }
     }
 
@@ -453,133 +526,18 @@ final class StatusItemController: NSObject {
         guard model.artworkLarge == nil,
               largeArtworkTask == nil,
               let data = artworkSourceData,
-              let key = lastArtworkKey
+              let key = currentTrackKey
         else { return }
 
         largeArtworkTask = Task { @MainActor [weak self] in
             let image = await MusicController.decodeArtwork(from: data, maxPixelSize: 512)
             guard let self else { return }
             defer {
-                if self.lastArtworkKey == key { self.largeArtworkTask = nil }
+                if self.currentTrackKey == key { self.largeArtworkTask = nil }
             }
-            guard !Task.isCancelled, self.lastArtworkKey == key else { return }
+            guard !Task.isCancelled, self.currentTrackKey == key else { return }
             self.model.artworkLarge = image
             self.artworkSourceData = nil
-        }
-    }
-
-    /// Everything the card shows beyond the track itself. Fetched as soon as
-    /// the pointer lands on the item, so it's usually ready before the card
-    /// appears, and again when the player reports a change while it's open.
-    /// Each piece is published as it arrives; the playlist listing (the
-    /// slowest script) comes last and is only re-read when the card opens.
-    private func loadPopupDetails(includePlaylists: Bool) {
-        progressTask?.cancel()
-        progressTask = Task { @MainActor [weak self] in
-            guard let self else { return }
-            let progress = await self.music.fetchProgress()
-            guard !Task.isCancelled, self.popupWanted else { return }
-            self.model.progress = progress
-
-            let favorited = await self.music.fetchFavorited()
-            guard !Task.isCancelled, self.popupWanted else { return }
-            if self.model.isFavorited != favorited { self.model.isFavorited = favorited }
-
-            let modes = await self.music.fetchPlaybackModes()
-            guard !Task.isCancelled, self.popupWanted else { return }
-            if self.model.playbackModes != modes { self.model.playbackModes = modes }
-
-            let isAppleMusic = self.music.activePlayer == .appleMusic
-            var playlists = isAppleMusic ? self.model.playlists : []
-            var devices = isAppleMusic ? self.model.outputDevices : []
-            if includePlaylists {
-                playlists = await self.music.fetchPlaylists()
-                devices = await self.music.fetchOutputDevices()
-            }
-            guard !Task.isCancelled, self.popupWanted else { return }
-            if self.model.playlists != playlists { self.model.playlists = playlists }
-            if self.model.outputDevices != devices { self.model.outputDevices = devices }
-        }
-    }
-
-    /// The card is open or about to open.
-    private var popupWanted: Bool { hoverPopup.isShown || model.isHovering }
-
-    private func addCurrentTrack(to playlist: Playlist, presentingCard: Bool = false) {
-        Task {
-            defer { if presentingCard { hoverPopup.present(relativeTo: statusItem.button) } }
-            switch await music.addCurrentTrack(to: playlist) {
-            case .added:
-                showPopupNotice(String(format: NSLocalizedString("Added to %@", comment: ""), playlist.name))
-            case .notInLibrary:
-                showPopupNotice(NSLocalizedString("Add the song to your library first", comment: ""))
-            case .failed:
-                showPopupNotice(String(format: NSLocalizedString("Couldn't add to %@", comment: ""), playlist.name))
-            }
-        }
-    }
-
-    /// Shown for two seconds under the card's controls; the card stays open
-    /// meanwhile so the result is visible even after the menu closes.
-    private func showPopupNotice(_ text: String) {
-        noticeTask?.cancel()
-        model.popupNotice = text
-        noticeTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(2))
-            guard !Task.isCancelled else { return }
-            self?.model.popupNotice = nil
-        }
-    }
-
-    /// Optimistic; restores the list and says so if Music refuses.
-    private func selectOutput(_ device: OutputDevice) {
-        let previous = model.outputDevices
-        model.outputDevices = previous.map { OutputDevice(id: $0.id, name: $0.name, isSelected: $0.id == device.id) }
-        Task {
-            guard !(await music.selectOutput(device)) else { return }
-            model.outputDevices = previous
-            showPopupNotice(String(format: NSLocalizedString("Couldn't switch to %@", comment: ""), device.name))
-        }
-    }
-
-    private func toggleShuffle() {
-        guard var modes = model.playbackModes else { return }
-        modes.shuffle.toggle()
-        model.playbackModes = modes
-        music.setShuffle(modes.shuffle)
-    }
-
-    /// Off → all → one (Music only) → off.
-    private func cycleRepeat() {
-        guard var modes = model.playbackModes else { return }
-        modes.repeatMode = switch modes.repeatMode {
-        case .off: .all
-        case .all: music.activePlayer == .appleMusic ? .one : .off
-        case .one: .off
-        }
-        model.playbackModes = modes
-        music.setRepeat(modes.repeatMode)
-    }
-
-    /// Optimistic: moves the bar at once instead of waiting for a reload.
-    private func seek(to position: TimeInterval) {
-        music.seek(to: position)
-        guard let progress = model.progress else { return }
-        model.progress = PlaybackProgress(
-            position: position,
-            duration: progress.duration,
-            start: Date().addingTimeInterval(-position)
-        )
-    }
-
-    /// Optimistic: flips the heart at once and reverts if Music refuses.
-    private func toggleFavorite() {
-        let favorited = !(model.isFavorited ?? false)
-        let key = lastArtworkKey
-        model.isFavorited = favorited
-        Task {
-            guard !(await music.setFavorited(favorited)), lastArtworkKey == key else { return }
-            model.isFavorited = !favorited
         }
     }
 
@@ -591,9 +549,58 @@ final class StatusItemController: NSObject {
         artworkSourceData = nil
     }
 
+    // MARK: - Recently played
+
+    private static func loadRecentTracks() -> [RecentTrack] {
+        guard let data = UserDefaults.standard.data(forKey: recentTracksKey) else { return [] }
+        return (try? JSONDecoder().decode([RecentTrack].self, from: data)) ?? []
+    }
+
+    private func recordRecentTrack() {
+        let track = RecentTrack(
+            title: model.title,
+            artist: model.artist,
+            player: music.activePlayer.rawValue,
+            trackID: currentTrackID
+        )
+        recentTracks = RecentTrack.adding(track, to: recentTracks)
+        saveRecentTracks()
+    }
+
+    func clearRecentTracks() {
+        recentTracks = []
+        saveRecentTracks()
+    }
+
+    private func saveRecentTracks() {
+        if let data = try? JSONEncoder().encode(recentTracks) {
+            UserDefaults.standard.set(data, forKey: Self.recentTracksKey)
+        }
+    }
+
+    /// Replays a song from the history. When the player can't start it (a
+    /// streamed Apple Music song outside the library, a player that isn't
+    /// running), its title and artist go to the clipboard instead.
+    func playRecentTrack(_ track: RecentTrack) {
+        Task {
+            if await music.play(track) {
+                refreshSoon()
+                return
+            }
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(track.displayText, forType: .string)
+            showPopupNotice(NSLocalizedString("Copied title and artist", comment: ""))
+            hoverPopup.present(relativeTo: statusItem.button)
+        }
+    }
+
+    // MARK: - Accessibility
+
     private func updateAccessibility() {
         let label: String
-        if !model.hasTrack {
+        if !music.permissionDeniedPlayers.isEmpty, !model.hasTrack {
+            label = NSLocalizedString("MusicBar needs permission to control the player", comment: "")
+        } else if !model.hasTrack {
             label = NSLocalizedString("No music playing", comment: "")
         } else if model.isPlaying {
             label = String(format: NSLocalizedString("Playing %@", comment: ""), model.displayText)
@@ -603,323 +610,16 @@ final class StatusItemController: NSObject {
         statusItem.button?.setAccessibilityLabel(label)
     }
 
-    // MARK: - Keyboard shortcuts
+    // MARK: - Updates
 
-    private func handleHotKey(_ action: GlobalHotKeys.Action) {
-        switch action {
-        case .toggleCard: hoverPopup.togglePresented(relativeTo: statusItem.button)
-        case .toggleFavorite: favoriteFromKeyboard()
-        case .addToPlaylist: showPlaylistMenuFromKeyboard()
-        }
-    }
-
-    /// The heart's state may not be loaded yet, so read it before flipping,
-    /// then show the card with the result.
-    private func favoriteFromKeyboard() {
-        guard model.hasTrack else { return }
+    /// The automatic check: silent, at most daily, and only if enabled. A
+    /// find shows up as a menu item rather than interrupting.
+    private func checkForUpdatesIfDue() {
+        guard AppSettings.shared.checkForUpdatesAutomatically, UpdateChecker.isAutomaticCheckDue() else { return }
         Task {
-            guard let current = await music.fetchFavorited() else { return }
-            model.isFavorited = current
-            toggleFavorite()
-            showPopupNotice(current
-                ? NSLocalizedString("Removed from Favorites", comment: "")
-                : NSLocalizedString("Added to Favorites", comment: ""))
-            hoverPopup.present(relativeTo: statusItem.button)
-        }
-    }
-
-    private func showPlaylistMenuFromKeyboard() {
-        guard model.hasTrack, music.activePlayer == .appleMusic else { return }
-        Task {
-            let playlists = await music.fetchPlaylists()
-            guard !playlists.isEmpty, let button = statusItem.button else { return }
-            let menu = NSMenu()
-            // No action, so it shows as a disabled header.
-            menu.addItem(NSMenuItem(title: NSLocalizedString("Add to Playlist", comment: ""), action: nil, keyEquivalent: ""))
-            for playlist in playlists {
-                let item = NSMenuItem(title: playlist.name, action: #selector(addToPlaylistFromMenu(_:)), keyEquivalent: "")
-                item.target = self
-                item.representedObject = playlist
-                menu.addItem(item)
+            if let version = try? await UpdateChecker.availableUpdate() {
+                availableUpdate = version
             }
-            // Activate so the menu takes arrow keys and Return.
-            NSApp.activate()
-            let below = NSPoint(x: 0, y: button.isFlipped ? button.bounds.maxY + 4 : -4)
-            _ = menu.popUp(positioning: nil, at: below, in: button)
         }
-    }
-
-    @objc private func addToPlaylistFromMenu(_ sender: NSMenuItem) {
-        guard let playlist = sender.representedObject as? Playlist else { return }
-        addCurrentTrack(to: playlist, presentingCard: true)
-    }
-
-    // MARK: - Clicks
-
-    @objc private func handleClick() {
-        guard let event = NSApp.currentEvent else { return }
-
-        // Don't leave the popup floating over a menu or while interacting.
-        hoverPopup.dismiss()
-
-        if event.type == .rightMouseUp {
-            showContextMenu()
-            return
-        }
-
-        // Option-click skips to the next track, no double-click delay.
-        if event.modifierFlags.contains(.option) {
-            singleClickTimer?.invalidate()
-            singleClickTimer = nil
-            music.nextTrack()
-            refreshSoon()
-            return
-        }
-
-        // Shift-click goes back a track, same immediacy as Option-click.
-        if event.modifierFlags.contains(.shift) {
-            singleClickTimer?.invalidate()
-            singleClickTimer = nil
-            music.previousTrack()
-            refreshSoon()
-            return
-        }
-
-        switch event.clickCount {
-        case 1:
-            // Delay so a second click can cancel the play/pause.
-            singleClickTimer = Timer.scheduledTimer(
-                withTimeInterval: NSEvent.doubleClickInterval,
-                repeats: false
-            ) { [weak self] _ in
-                Task { @MainActor in
-                    self?.music.playPause()
-                    self?.refreshSoon()
-                }
-            }
-        case 2:
-            singleClickTimer?.invalidate()
-            singleClickTimer = nil
-            music.openPlayerApp()
-        default:
-            break
-        }
-    }
-
-    /// Scrolling over the item changes the player's volume. The hosting view
-    /// passes hit-testing through, so a local monitor catches the events.
-    private func observeScrollWheel() {
-        scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
-            let handled = MainActor.assumeIsolated { self?.handleScroll(event) ?? false }
-            return handled ? nil : event
-        }
-    }
-
-    private func handleScroll(_ event: NSEvent) -> Bool {
-        guard event.window === statusItem.button?.window else { return false }
-        // Physical direction regardless of natural scrolling: up is louder.
-        var delta = event.isDirectionInvertedFromDevice ? -event.scrollingDeltaY : event.scrollingDeltaY
-        // Trackpads report points; scale them down to wheel-like steps.
-        if event.hasPreciseScrollingDeltas { delta /= 8 }
-        scrollAccumulator += delta
-        let steps = Int(scrollAccumulator)
-        guard steps != 0 else { return true }
-        scrollAccumulator -= CGFloat(steps)
-        Task {
-            guard let volume = await music.changeVolume(by: steps * 5) else { return }
-            // The card is usually open while the pointer is over the item.
-            showPopupNotice(String(format: NSLocalizedString("Volume %d%%", comment: ""), volume))
-        }
-        return true
-    }
-
-    /// Give the player a moment to apply the command before reconciling.
-    /// Fallback only — cancelled if the player's notification arrives first.
-    private func refreshSoon() {
-        pendingReconcile?.cancel()
-        pendingReconcile = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(300))
-            guard !Task.isCancelled else { return }
-            await refresh()
-        }
-    }
-
-    private func showContextMenu() {
-        let menu = NSMenu()
-        let openTitle = music.activePlayer == .spotify
-            ? NSLocalizedString("Open Spotify", comment: "")
-            : NSLocalizedString("Open Music", comment: "")
-        let openItem = NSMenuItem(title: openTitle, action: #selector(openPlayer), keyEquivalent: "")
-        openItem.target = self
-        menu.addItem(openItem)
-        if model.hasTrack, music.activePlayer == .appleMusic {
-            let favoriteItem = NSMenuItem(title: NSLocalizedString("Favorite Song", comment: ""), action: #selector(favoriteSong), keyEquivalent: "")
-            favoriteItem.target = self
-            favoriteItem.state = model.isFavorited == true ? .on : .off
-            menu.addItem(favoriteItem)
-            let showItem = NSMenuItem(title: NSLocalizedString("Show in Music", comment: ""), action: #selector(showInMusic), keyEquivalent: "")
-            showItem.target = self
-            menu.addItem(showItem)
-        }
-        if model.hasTrack, music.activePlayer == .spotify {
-            let linkItem = NSMenuItem(title: NSLocalizedString("Copy Song Link", comment: ""), action: #selector(copySongLink), keyEquivalent: "")
-            linkItem.target = self
-            menu.addItem(linkItem)
-        }
-        // The current song is already in the menu bar.
-        let current = RecentTrack(title: model.title, artist: model.artist)
-        let history = recentTracks.filter { $0 != current }
-        if !history.isEmpty {
-            let recentItem = NSMenuItem(title: NSLocalizedString("Recently Played", comment: ""), action: nil, keyEquivalent: "")
-            let submenu = NSMenu()
-            for track in history {
-                let item = NSMenuItem(title: track.displayText, action: #selector(copyRecentTrack(_:)), keyEquivalent: "")
-                item.target = self
-                item.toolTip = NSLocalizedString("Copy title and artist", comment: "")
-                submenu.addItem(item)
-            }
-            recentItem.submenu = submenu
-            menu.addItem(recentItem)
-        }
-        menu.addItem(.separator())
-        menu.addItem(sleepTimerMenuItem())
-        menu.addItem(.separator())
-        let settingsItem = NSMenuItem(title: NSLocalizedString("Settings…", comment: ""), action: #selector(openSettings), keyEquivalent: ",")
-        settingsItem.target = self
-        menu.addItem(settingsItem)
-        let aboutItem = NSMenuItem(title: NSLocalizedString("About MusicBar", comment: ""), action: #selector(showAbout), keyEquivalent: "")
-        aboutItem.target = self
-        menu.addItem(aboutItem)
-        menu.addItem(.separator())
-        let quitItem = NSMenuItem(title: NSLocalizedString("Quit MusicBar", comment: ""), action: #selector(quit), keyEquivalent: "q")
-        quitItem.target = self
-        menu.addItem(quitItem)
-
-        // Assign temporarily so left clicks keep their custom behavior.
-        statusItem.menu = menu
-        statusItem.button?.performClick(nil)
-        statusItem.menu = nil
-    }
-
-    private func sleepTimerMenuItem() -> NSMenuItem {
-        let item = NSMenuItem(title: NSLocalizedString("Sleep Timer", comment: ""), action: nil, keyEquivalent: "")
-        let submenu = NSMenu()
-        if let end = sleepTimerEnd {
-            // No action, so the menu shows it disabled.
-            submenu.addItem(NSMenuItem(
-                title: String(format: NSLocalizedString("Pauses at %@", comment: ""), end.formatted(date: .omitted, time: .shortened)),
-                action: nil,
-                keyEquivalent: ""
-            ))
-            submenu.addItem(.separator())
-        }
-        for minutes in [0, 15, 30, 60] {
-            let title = minutes == 0
-                ? NSLocalizedString("Off", comment: "")
-                : String(format: NSLocalizedString("%d minutes", comment: ""), minutes)
-            let option = NSMenuItem(title: title, action: #selector(setSleepTimer(_:)), keyEquivalent: "")
-            option.target = self
-            option.tag = minutes
-            option.state = sleepTimerMinutes == minutes ? .on : .off
-            submenu.addItem(option)
-        }
-        item.submenu = submenu
-        return item
-    }
-
-    @objc private func setSleepTimer(_ sender: NSMenuItem) {
-        let minutes = sender.tag
-        sleepTimerTask?.cancel()
-        sleepTimerTask = nil
-        sleepTimerEnd = nil
-        sleepTimerMinutes = minutes
-        guard minutes > 0 else { return }
-        sleepTimerEnd = Date().addingTimeInterval(TimeInterval(minutes * 60))
-        sleepTimerTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(minutes * 60))
-            guard !Task.isCancelled, let self else { return }
-            self.music.pause()
-            self.sleepTimerEnd = nil
-            self.sleepTimerMinutes = 0
-        }
-    }
-
-    @objc private func copyRecentTrack(_ sender: NSMenuItem) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(sender.title, forType: .string)
-    }
-
-    @objc private func showInMusic() {
-        music.revealCurrentTrack()
-    }
-
-    @objc private func favoriteSong() {
-        toggleFavorite()
-    }
-
-    @objc private func copySongLink() {
-        Task {
-            guard let url = await music.spotifyTrackLink() else { return }
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(url.absoluteString, forType: .string)
-        }
-    }
-
-    @objc private func openPlayer() {
-        music.openPlayerApp()
-    }
-
-    @objc private func openSettings() {
-        settingsWindow.show()
-    }
-
-    @objc private func showAbout() {
-        NSApp.activate()
-        NSApp.orderFrontStandardAboutPanel(nil)
-    }
-
-    @objc private func quit() {
-        NSApp.terminate(nil)
-    }
-}
-
-/// Reports hover through a tracking area (tracking ignores hitTest). The
-/// status item passes clicks through to its button underneath; the hover
-/// card takes the first click even though its panel never becomes key.
-final class HoverTrackingHostingView<Content: View>: NSHostingView<Content> {
-    var onHoverChange: ((Bool) -> Void)?
-    var passesClicksThrough = false
-
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        passesClicksThrough ? nil : super.hitTest(point)
-    }
-
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(
-            rect: bounds,
-            options: [.mouseEnteredAndExited, .activeAlways],
-            owner: self,
-            userInfo: nil
-        ))
-    }
-
-    override func mouseEntered(with event: NSEvent) {
-        onHoverChange?(true)
-    }
-
-    override func mouseExited(with event: NSEvent) {
-        onHoverChange?(false)
-    }
-
-    required init(rootView: Content) {
-        super.init(rootView: rootView)
-    }
-
-    @MainActor required dynamic init?(coder: NSCoder) {
-        fatalError("init(coder:) is not supported")
     }
 }

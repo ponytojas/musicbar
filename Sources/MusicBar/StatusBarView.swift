@@ -1,11 +1,12 @@
 import SwiftUI
 
 /// Content of the menu bar item: a state icon plus the track title in a
-/// fixed-width marquee.
+/// marquee.
 struct StatusBarView: View {
     @ObservedObject var model: TrackModel
     let waveform: AudioWaveformModel
     @ObservedObject var settings = AppSettings.shared
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var displayText: String {
         settings.showArtist ? model.displayText : model.title
@@ -13,9 +14,31 @@ struct StatusBarView: View {
 
     private var showsTrack: Bool { model.hasTrack && !model.isCollapsed }
 
+    private var showsCover: Bool { settings.showArtwork && showsTrack && model.artwork != nil }
+
+    /// Nothing queued, or every part of the track display is off or
+    /// missing: the note keeps the item from going blank.
+    private var showsNote: Bool {
+        !showsTrack || !(settings.showTitle || settings.showEqualizer || showsCover)
+    }
+
+    /// Reduce Motion swaps the slides and springs for a short fade.
+    private var change: Animation {
+        reduceMotion ? .easeInOut(duration: 0.2) : .spring(duration: 0.4)
+    }
+
+    private var titleTransition: AnyTransition {
+        reduceMotion
+            ? .opacity
+            : .asymmetric(
+                insertion: .move(edge: .bottom).combined(with: .opacity),
+                removal: .move(edge: .top).combined(with: .opacity)
+            )
+    }
+
     var body: some View {
         HStack(spacing: 6) {
-            if settings.showArtwork, showsTrack, let artwork = model.artwork {
+            if showsCover, let artwork = model.artwork {
                 // ZStack keeps a single 17 pt slot while the old cover
                 // animates out and the new one in (id swap = new identity).
                 ZStack {
@@ -26,45 +49,54 @@ struct StatusBarView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                         .id(ObjectIdentifier(artwork))
                         .transition(.asymmetric(
-                            insertion: .scale(scale: 0.6).combined(with: .opacity),
+                            insertion: reduceMotion ? .opacity : .scale(scale: 0.6).combined(with: .opacity),
                             removal: .opacity
                         ))
                 }
                 .frame(width: 17, height: 17)
             }
 
-            if showsTrack {
+            if showsNote {
+                Image(systemName: "music.note")
+                    .font(.system(size: 12, weight: .semibold))
+            } else {
                 if settings.showEqualizer && settings.equalizerPosition == .left {
                     equalizer
                 }
 
-                MarqueeText(text: displayText, maxWidth: settings.textWidth, model: model, settings: settings)
-                    .id(displayText)
-                    .transition(.asymmetric(
-                        insertion: .move(edge: .bottom).combined(with: .opacity),
-                        removal: .move(edge: .top).combined(with: .opacity)
-                    ))
+                if settings.showTitle {
+                    MarqueeText(text: displayText, maxWidth: settings.textWidth, model: model, settings: settings)
+                        .id(displayText)
+                        .transition(titleTransition)
+                }
 
                 if settings.showEqualizer && settings.equalizerPosition == .right {
                     equalizer
                 }
-            } else {
-                Image(systemName: "music.note")
-                    .font(.system(size: 12, weight: .semibold))
+            }
+
+            if model.sleepTimerActive {
+                Image(systemName: "moon.zzz.fill")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .transition(.opacity)
             }
         }
         .padding(.leading, 12)
         .padding(.trailing, 8)
         .frame(height: 22)
         .clipped()
-        .animation(.spring(duration: 0.4), value: displayText)
-        .animation(.spring(duration: 0.4), value: model.isPlaying)
-        .animation(.spring(duration: 0.4), value: model.isCollapsed)
-        .animation(.spring(duration: 0.4), value: model.artwork.map(ObjectIdentifier.init))
-        .animation(.spring(duration: 0.4), value: settings.showArtwork)
-        .animation(.spring(duration: 0.4), value: settings.showEqualizer)
-        .animation(.spring(duration: 0.4), value: settings.textWidth)
-        .animation(.spring(duration: 0.4), value: settings.equalizerPosition)
+        .animation(change, value: displayText)
+        .animation(change, value: model.isPlaying)
+        .animation(change, value: model.isCollapsed)
+        .animation(change, value: model.sleepTimerActive)
+        .animation(change, value: model.artwork.map(ObjectIdentifier.init))
+        .animation(change, value: settings.showArtwork)
+        .animation(change, value: settings.showEqualizer)
+        .animation(change, value: settings.showTitle)
+        .animation(change, value: settings.fitTitleToContent)
+        .animation(change, value: settings.textWidth)
+        .animation(change, value: settings.equalizerPosition)
     }
 
     private var equalizer: some View {
@@ -144,6 +176,16 @@ private final class WaveformDrawingView: NSView, AudioWaveformConsumer {
 
     override var isOpaque: Bool { false }
 
+    /// The menu bar turns light or dark with the wallpaper behind it.
+    private var isOnDarkBackground: Bool {
+        effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
+    }
+
     func displayWaveformLevels(_ levels: [CGFloat]) {
         guard !reducedMotion else { return }
         guard self.levels != levels else { return }
@@ -181,6 +223,7 @@ private final class WaveformDrawingView: NSView, AudioWaveformConsumer {
         let totalWidth = CGFloat(count) * barWidth + CGFloat(max(0, count - 1)) * barSpacing
         let startX = (bounds.width - totalWidth) / 2 + barWidth / 2
         let time = Date.timeIntervalSinceReferenceDate
+        let onDark = isOnDarkBackground
 
         for index in 0..<count {
             let level = isPlaying ? min(1, max(0, levels[index])) : 0.08
@@ -191,15 +234,19 @@ private final class WaveformDrawingView: NSView, AudioWaveformConsumer {
             path.lineCapStyle = .round
             path.move(to: NSPoint(x: x, y: (bounds.height - height) / 2))
             path.line(to: NSPoint(x: x, y: (bounds.height + height) / 2))
-            color(index: index, count: count, time: time).setStroke()
+            color(index: index, count: count, time: time, onDark: onDark).setStroke()
             path.stroke()
         }
     }
 
-    private func color(index: Int, count: Int, time: TimeInterval) -> NSColor {
+    private func color(index: Int, count: Int, time: TimeInterval, onDark: Bool) -> NSColor {
         switch colorMode {
         case .gradient:
-            return artworkGradient.color(at: Double(index) / Double(max(1, count - 1)))
+            // Cover colors are whatever the art is; a near-black cover on a
+            // dark menu bar would otherwise hide the bars.
+            return artworkGradient
+                .color(at: Double(index) / Double(max(1, count - 1)))
+                .legible(onDarkBackground: onDark)
         case .fixed:
             return customColor
         case .random:
@@ -322,37 +369,66 @@ private struct ArtworkGradient {
     }
 }
 
+extension NSColor {
+    /// The same hue, lifted on a dark background or deepened on a light
+    /// one until it stands out from it.
+    func legible(onDarkBackground: Bool) -> NSColor {
+        guard let color = usingColorSpace(.sRGB) else { return self }
+        var hue: CGFloat = 0
+        var saturation: CGFloat = 0
+        var brightness: CGFloat = 0
+        var alpha: CGFloat = 0
+        color.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha)
+        let adjusted = onDarkBackground ? max(brightness, 0.6) : min(brightness, 0.7)
+        guard adjusted != brightness else { return color }
+        return NSColor(hue: hue, saturation: saturation, brightness: adjusted, alpha: alpha)
+    }
+}
+
 /// Single-line text clamped to `maxWidth`. When the text is wider, it holds
 /// for the configured delay (or until the mouse hovers the item), scrolls
-/// right-to-left to reveal the rest, holds, then eases back — repeating.
+/// right-to-left to reveal the rest, holds, then eases back — repeating
+/// while music plays. With Reduce Motion it stays put, cut off with a fade.
 struct MarqueeText: View {
     let text: String
     let maxWidth: CGFloat
     @ObservedObject var model: TrackModel
     @ObservedObject var settings: AppSettings
 
-    @State private var fullTextWidth: CGFloat = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var offset: CGFloat = 0
 
     private let scrollSpeed: CGFloat = 30 // points per second
+
+    private static let font = NSFont.systemFont(ofSize: 12, weight: .medium)
+
+    /// Measured from the string instead of read back from layout, so the
+    /// item has its final width on the first frame of a new title.
+    static func width(of text: String) -> CGFloat {
+        ceil((text as NSString).size(withAttributes: [.font: font]).width)
+    }
+
+    /// Short titles give the room back to the menu bar when `fit` is on.
+    static func frameWidth(textWidth: CGFloat, maxWidth: CGFloat, fit: Bool) -> CGFloat {
+        fit ? min(textWidth, maxWidth) : maxWidth
+    }
+
+    private var fullTextWidth: CGFloat { Self.width(of: text) }
 
     private var needsScroll: Bool { fullTextWidth > maxWidth }
 
     var body: some View {
         Text(text)
-            .font(.system(size: 12, weight: .medium))
+            .font(Font(Self.font))
             .lineLimit(1)
             .fixedSize(horizontal: true, vertical: false)
-            .background {
-                GeometryReader { geo in
-                    Color.clear.preference(key: TextWidthKey.self, value: geo.size.width)
-                }
-            }
             .offset(x: offset)
-            .frame(width: maxWidth, alignment: needsScroll ? .leading : .center)
+            .frame(
+                width: Self.frameWidth(textWidth: fullTextWidth, maxWidth: maxWidth, fit: settings.fitTitleToContent),
+                alignment: needsScroll ? .leading : .center
+            )
             .clipped()
             .mask(edgeFadeMask)
-            .onPreferenceChange(TextWidthKey.self) { fullTextWidth = $0 }
             .task(id: animationID) { await runMarquee() }
     }
 
@@ -370,9 +446,12 @@ struct MarqueeText: View {
 
     private func runMarquee() async {
         offset = 0
-        guard needsScroll, model.screenActive else { return }
+        guard needsScroll, model.screenActive, !reduceMotion else { return }
         while !Task.isCancelled {
             if !model.isHovering {
+                // Paused: nothing to follow along with, so only a hover
+                // scrolls. Saves waking up every few seconds for nothing.
+                guard model.isPlaying else { return }
                 do {
                     try await Task.sleep(for: .seconds(settings.holdSeconds))
                 } catch {
@@ -407,10 +486,11 @@ struct MarqueeText: View {
     private var animationID: MarqueeAnimationID {
         MarqueeAnimationID(
             text: text,
-            fullTextWidth: fullTextWidth,
             maxWidth: maxWidth,
             isHovering: model.isHovering,
+            isPlaying: model.isPlaying,
             screenActive: model.screenActive,
+            reduceMotion: reduceMotion,
             holdSeconds: settings.holdSeconds
         )
     }
@@ -418,16 +498,10 @@ struct MarqueeText: View {
 
 private struct MarqueeAnimationID: Hashable {
     let text: String
-    let fullTextWidth: CGFloat
     let maxWidth: CGFloat
     let isHovering: Bool
+    let isPlaying: Bool
     let screenActive: Bool
+    let reduceMotion: Bool
     let holdSeconds: Int
-}
-
-private struct TextWidthKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = max(value, nextValue())
-    }
 }

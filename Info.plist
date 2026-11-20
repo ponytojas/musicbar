@@ -21,12 +21,16 @@
         <key>CFBundleVersion</key>
         <string>1</string>
         <key>LSMinimumSystemVersion</key>
-        <string>14.0</string>
+        <string>14.2</string>
+        <key>LSApplicationCategoryType</key>
+        <string>public.app-category.music</string>
         <key>LSUIElement</key>
         <true />
-	<key>NSAppleEventsUsageDescription</key>
-	<string>MusicBar controls Apple Music and Spotify to show and manage the current track.</string>
-	<key>NSAudioCaptureUsageDescription</key>
-	<string>MusicBar analyzes audio from Apple Music and Spotify to display a live waveform. Audio is never recorded or saved.</string>
-</dict>
+        <key>LSMultipleInstancesProhibited</key>
+        <true />
+        <key>NSAppleEventsUsageDescription</key>
+        <string>MusicBar controls Apple Music and Spotify to show and manage the current track.</string>
+        <key>NSAudioCaptureUsageDescription</key>
+        <string>MusicBar analyzes audio from Apple Music and Spotify to display a live waveform. Audio is never recorded or saved.</string>
+    </dict>
 </plist>

@@ -17,6 +17,19 @@ enum PlayerMode: String, CaseIterable {
     }
 }
 
+/// What the bars show.
+enum EqualizerStyle: String, CaseIterable {
+    /// Frequency bands of the player's audio, bass on the left.
+    case spectrum
+    /// Loudness of the player's audio over the last instant.
+    case levels
+    /// Decorative movement; never listens to audio, so it needs no
+    /// System Audio Recording permission.
+    case simulated
+
+    var capturesAudio: Bool { self != .simulated }
+}
+
 enum EqualizerColorMode: String, CaseIterable {
     case gradient
     case fixed
@@ -35,87 +48,115 @@ enum EqualizerColorMode: String, CaseIterable {
 }
 
 /// User preferences, persisted in UserDefaults. Shared by the menu bar view
-/// and the settings window.
+/// and the settings window. Each property names its key and default once.
 @MainActor
 final class AppSettings: ObservableObject {
     static let shared = AppSettings()
 
-    @Published var playerMode: PlayerMode {
-        didSet { UserDefaults.standard.set(playerMode.rawValue, forKey: "playerMode") }
+    @Published var playerMode: PlayerMode = AppSettings.storedEnum("playerMode", .automatic) {
+        didSet { Self.save(playerMode.rawValue, "playerMode") }
     }
-    @Published var showArtwork: Bool {
-        didSet { UserDefaults.standard.set(showArtwork, forKey: "showArtwork") }
+    @Published var showArtwork: Bool = AppSettings.stored("showArtwork", true) {
+        didSet { Self.save(showArtwork, "showArtwork") }
     }
-    @Published var showEqualizer: Bool {
-        didSet { UserDefaults.standard.set(showEqualizer, forKey: "showEqualizer") }
+    @Published var showEqualizer: Bool = AppSettings.stored("showEqualizer", true) {
+        didSet { Self.save(showEqualizer, "showEqualizer") }
     }
-    @Published var showArtist: Bool {
-        didSet { UserDefaults.standard.set(showArtist, forKey: "showArtist") }
+    /// Off leaves only the cover and equalizer in the menu bar.
+    @Published var showTitle: Bool = AppSettings.stored("showTitle", true) {
+        didSet { Self.save(showTitle, "showTitle") }
+    }
+    @Published var showArtist: Bool = AppSettings.stored("showArtist", true) {
+        didSet { Self.save(showArtist, "showArtist") }
+    }
+    /// Short titles take only the room they need instead of `textWidth`.
+    @Published var fitTitleToContent: Bool = AppSettings.stored("fitTitleToContent", true) {
+        didSet { Self.save(fitTitleToContent, "fitTitleToContent") }
     }
     /// 0 keeps the title visible while paused.
-    @Published var collapseAfterPauseMinutes: Int {
-        didSet { UserDefaults.standard.set(collapseAfterPauseMinutes, forKey: "collapseAfterPauseMinutes") }
+    @Published var collapseAfterPauseMinutes: Int = AppSettings.stored("collapseAfterPauseMinutes", 0) {
+        didSet { Self.save(collapseAfterPauseMinutes, "collapseAfterPauseMinutes") }
     }
-    @Published var lookUpArtworkOnline: Bool {
-        didSet { UserDefaults.standard.set(lookUpArtworkOnline, forKey: "lookUpArtworkOnline") }
+    @Published var lookUpArtworkOnline: Bool = AppSettings.stored("lookUpArtworkOnline", true) {
+        didSet { Self.save(lookUpArtworkOnline, "lookUpArtworkOnline") }
     }
-    @Published var globalShortcuts: Bool {
-        didSet { UserDefaults.standard.set(globalShortcuts, forKey: "globalShortcuts") }
+    @Published var checkForUpdatesAutomatically: Bool = AppSettings.stored("checkForUpdatesAutomatically", false) {
+        didSet { Self.save(checkForUpdatesAutomatically, "checkForUpdatesAutomatically") }
     }
-    @Published var notifyOnTrackChange: Bool {
-        didSet { UserDefaults.standard.set(notifyOnTrackChange, forKey: "notifyOnTrackChange") }
+    @Published var notifyOnTrackChange: Bool = AppSettings.stored("notifyOnTrackChange", false) {
+        didSet { Self.save(notifyOnTrackChange, "notifyOnTrackChange") }
     }
-    @Published var textWidth: Double {
-        didSet { UserDefaults.standard.set(textWidth, forKey: "textWidth") }
+    @Published var showHoverCard: Bool = AppSettings.stored("showHoverCard", true) {
+        didSet { Self.save(showHoverCard, "showHoverCard") }
     }
-    @Published var holdSeconds: Int {
-        didSet { UserDefaults.standard.set(holdSeconds, forKey: "holdSeconds") }
+    @Published var scrollChangesVolume: Bool = AppSettings.stored("scrollChangesVolume", true) {
+        didSet { Self.save(scrollChangesVolume, "scrollChangesVolume") }
     }
-    @Published var equalizerPosition: EqualizerPosition {
-        didSet { UserDefaults.standard.set(equalizerPosition.rawValue, forKey: "equalizerPosition") }
+    /// On makes a single click wait out the double-click interval.
+    @Published var doubleClickOpensPlayer: Bool = AppSettings.stored("doubleClickOpensPlayer", false) {
+        didSet { Self.save(doubleClickOpensPlayer, "doubleClickOpensPlayer") }
     }
-    @Published var equalizerColorMode: EqualizerColorMode {
-        didSet { UserDefaults.standard.set(equalizerColorMode.rawValue, forKey: "equalizerColorMode") }
+    @Published var textWidth: Double = AppSettings.stored("textWidth", 150.0) {
+        didSet { Self.save(textWidth, "textWidth") }
     }
-    @Published var equalizerColorHex: String {
-        didSet { UserDefaults.standard.set(equalizerColorHex, forKey: "equalizerColorHex") }
+    @Published var holdSeconds: Int = AppSettings.stored("holdSeconds", 10) {
+        didSet { Self.save(holdSeconds, "holdSeconds") }
     }
+    @Published var equalizerPosition: EqualizerPosition = AppSettings.storedEnum("equalizerPosition", .left) {
+        didSet { Self.save(equalizerPosition.rawValue, "equalizerPosition") }
+    }
+    @Published var equalizerStyle: EqualizerStyle = AppSettings.storedEnum("equalizerStyle", .spectrum) {
+        didSet { Self.save(equalizerStyle.rawValue, "equalizerStyle") }
+    }
+    @Published var equalizerColorMode = EqualizerColorMode(
+        storedValue: AppSettings.stored("equalizerColorMode", EqualizerColorMode.gradient.rawValue)
+    ) {
+        didSet { Self.save(equalizerColorMode.rawValue, "equalizerColorMode") }
+    }
+    @Published var equalizerColorHex: String = AppSettings.stored("equalizerColorHex", "#FF375F") {
+        didSet { Self.save(equalizerColorHex, "equalizerColorHex") }
+    }
+    @Published var globalShortcuts: Bool = AppSettings.stored("globalShortcuts", true) {
+        didSet { Self.save(globalShortcuts, "globalShortcuts") }
+    }
+    /// Actions without an entry have no shortcut.
+    @Published var shortcuts: [HotKeyAction: Shortcut] = AppSettings.storedShortcuts() {
+        didSet { Self.save(Shortcut.encode(shortcuts), "shortcuts") }
+    }
+
+    // Not persisted: state the settings window and the hot keys share.
+
+    /// The action whose shortcut is being recorded. Hot keys are off
+    /// meanwhile, or pressing a current shortcut would fire it instead.
+    @Published var recordingShortcut: HotKeyAction?
+    /// Shortcuts macOS refused to register, usually taken by another app.
+    @Published var unavailableShortcuts: Set<HotKeyAction> = []
 
     var equalizerColor: Color {
         get { Color(hex: equalizerColorHex) }
         set { equalizerColorHex = newValue.hexString }
     }
 
-    private init() {
-        let defaults = UserDefaults.standard
-        defaults.register(defaults: [
-            "playerMode": PlayerMode.automatic.rawValue,
-            "showArtwork": true,
-            "showEqualizer": true,
-            "showArtist": true,
-            "lookUpArtworkOnline": true,
-            "globalShortcuts": true,
-            "textWidth": 150.0,
-            "holdSeconds": 10,
-            "equalizerPosition": EqualizerPosition.left.rawValue,
-            "equalizerColorMode": EqualizerColorMode.gradient.rawValue,
-            "equalizerColorHex": "#FF375F",
-        ])
-        playerMode = PlayerMode(rawValue: defaults.string(forKey: "playerMode") ?? "") ?? .automatic
-        showArtwork = defaults.bool(forKey: "showArtwork")
-        showEqualizer = defaults.bool(forKey: "showEqualizer")
-        showArtist = defaults.bool(forKey: "showArtist")
-        collapseAfterPauseMinutes = defaults.integer(forKey: "collapseAfterPauseMinutes")
-        lookUpArtworkOnline = defaults.bool(forKey: "lookUpArtworkOnline")
-        globalShortcuts = defaults.bool(forKey: "globalShortcuts")
-        notifyOnTrackChange = defaults.bool(forKey: "notifyOnTrackChange")
-        textWidth = defaults.double(forKey: "textWidth")
-        holdSeconds = defaults.integer(forKey: "holdSeconds")
-        equalizerPosition = EqualizerPosition(rawValue: defaults.string(forKey: "equalizerPosition") ?? "") ?? .left
-        equalizerColorMode = EqualizerColorMode(
-            storedValue: defaults.string(forKey: "equalizerColorMode") ?? ""
-        )
-        equalizerColorHex = defaults.string(forKey: "equalizerColorHex") ?? "#FF375F"
+    private init() {}
+
+    private nonisolated static func stored<Value>(_ key: String, _ fallback: Value) -> Value {
+        UserDefaults.standard.object(forKey: key) as? Value ?? fallback
+    }
+
+    private nonisolated static func storedEnum<Value: RawRepresentable>(
+        _ key: String,
+        _ fallback: Value
+    ) -> Value where Value.RawValue == String {
+        UserDefaults.standard.string(forKey: key).flatMap(Value.init(rawValue:)) ?? fallback
+    }
+
+    /// Nothing saved yet means the built-in defaults.
+    private nonisolated static func storedShortcuts() -> [HotKeyAction: Shortcut] {
+        UserDefaults.standard.data(forKey: "shortcuts").flatMap(Shortcut.decode) ?? HotKeyAction.defaultShortcuts
+    }
+
+    private nonisolated static func save(_ value: Any?, _ key: String) {
+        UserDefaults.standard.set(value, forKey: key)
     }
 }
 

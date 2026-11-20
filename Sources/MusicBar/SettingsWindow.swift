@@ -2,7 +2,6 @@ import AppKit
 import os
 import ServiceManagement
 import SwiftUI
-import UserNotifications
 
 @MainActor
 final class SettingsWindowController: NSObject, NSWindowDelegate {
@@ -28,14 +27,53 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     /// Drop the window (and its SwiftUI hierarchy) once closed instead of
     /// keeping it alive for the rest of the app's life.
     func windowWillClose(_ notification: Notification) {
+        // Closing mid-recording would leave the global shortcuts off.
+        ShortcutRecording.cancel()
         window = nil
     }
 }
 
 struct SettingsView: View {
     @ObservedObject var settings: AppSettings
+
+    var body: some View {
+        TabView {
+            GeneralSettings(settings: settings)
+                .tabItem { Label("General", systemImage: "gearshape") }
+            MenuBarSettings(settings: settings)
+                .tabItem { Label("Menu Bar", systemImage: "menubar.rectangle") }
+            EqualizerSettings(settings: settings)
+                .tabItem { Label("Equalizer", systemImage: "waveform") }
+            ShortcutSettings(settings: settings)
+                .tabItem { Label("Shortcuts", systemImage: "keyboard") }
+        }
+        // Short enough for a 13-inch screen at its largest text size; each
+        // tab scrolls if it ever needs more.
+        .frame(width: 460, height: 500)
+        .padding(.top, 8)
+    }
+}
+
+/// Small grey explanation under a section.
+private struct Footnote: View {
+    let text: LocalizedStringKey
+
+    init(_ text: LocalizedStringKey) {
+        self.text = text
+    }
+
+    var body: some View {
+        Text(text)
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+    }
+}
+
+struct GeneralSettings: View {
+    @ObservedObject var settings: AppSettings
     @State private var loginItemStatus = SMAppService.mainApp.status
     @State private var launchAtLogin = [.enabled, .requiresApproval].contains(SMAppService.mainApp.status)
+    @State private var notificationsDenied = false
 
     var body: some View {
         Form {
@@ -44,12 +82,15 @@ struct SettingsView: View {
                     .onChange(of: launchAtLogin) { _, enabled in
                         setLaunchAtLogin(enabled)
                     }
+                Picker("Player", selection: $settings.playerMode) {
+                    Text("Automatic").tag(PlayerMode.automatic)
+                    Text(verbatim: "Apple Music").tag(PlayerMode.appleMusic)
+                    Text(verbatim: "Spotify").tag(PlayerMode.spotify)
+                }
             } footer: {
                 if loginItemStatus == .requiresApproval {
                     HStack {
-                        Text("Approve MusicBar in Login Items to finish.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
+                        Footnote("Approve MusicBar in Login Items to finish.")
                         Spacer()
                         Button("Open Login Items") { SMAppService.openSystemSettingsLoginItems() }
                             .controlSize(.small)
@@ -58,81 +99,40 @@ struct SettingsView: View {
             }
 
             Section {
-                Toggle("Global shortcuts", isOn: $settings.globalShortcuts)
-            } header: {
-                Text("Keyboard")
-            } footer: {
-                Text("⌃⌥⌘M shows the card, ⌃⌥⌘F favorites the song, and ⌃⌥⌘P adds it to a playlist.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section("Notifications") {
                 Toggle("Notify when the song changes", isOn: $settings.notifyOnTrackChange)
                     .onChange(of: settings.notifyOnTrackChange) { _, enabled in
                         guard enabled else { return }
-                        UNUserNotificationCenter.current().requestAuthorization(options: [.alert]) { _, _ in }
+                        notificationsDenied = false
+                        Task {
+                            guard !(await TrackNotifier.requestAuthorization()) else { return }
+                            // Don't leave the switch on for banners macOS
+                            // will never show.
+                            notificationsDenied = true
+                            settings.notifyOnTrackChange = false
+                        }
                     }
-            }
-
-            Section("Menu Bar") {
-                Picker("Player", selection: $settings.playerMode) {
-                    Text("Automatic").tag(PlayerMode.automatic)
-                    Text(verbatim: "Apple Music").tag(PlayerMode.appleMusic)
-                    Text(verbatim: "Spotify").tag(PlayerMode.spotify)
-                }
-                Toggle("Show album artwork", isOn: $settings.showArtwork)
-                Toggle("Show artist name", isOn: $settings.showArtist)
-                Picker("Hide title when paused", selection: $settings.collapseAfterPauseMinutes) {
-                    Text("Never").tag(0)
-                    Text("After 1 minute").tag(1)
-                    Text("After 5 minutes").tag(5)
-                    Text("After 15 minutes").tag(15)
-                }
-            }
-
-            Section("Equalizer") {
-                Toggle("Show equalizer", isOn: $settings.showEqualizer)
-                if settings.showEqualizer {
-                    Picker("Position", selection: $settings.equalizerPosition) {
-                        Text("Left of title").tag(EqualizerPosition.left)
-                        Text("Right of title").tag(EqualizerPosition.right)
-                    }
-                    Picker("Color", selection: $settings.equalizerColorMode) {
-                        Text("Gradient").tag(EqualizerColorMode.gradient)
-                        Text("Fixed color").tag(EqualizerColorMode.fixed)
-                        Text("Random colors").tag(EqualizerColorMode.random)
-                    }
-                    if settings.equalizerColorMode == .fixed {
-                        ColorPicker("Custom color", selection: Binding(
-                            get: { settings.equalizerColor },
-                            set: { settings.equalizerColor = $0 }
-                        ), supportsOpacity: false)
+            } header: {
+                Text("Notifications")
+            } footer: {
+                if notificationsDenied {
+                    HStack {
+                        Footnote("Notifications are turned off for MusicBar in System Settings.")
+                        Spacer()
+                        Button("Open Notification Settings") { TrackNotifier.openSystemSettings() }
+                            .controlSize(.small)
                     }
                 }
             }
 
             Section {
-                LabeledContent("Title width") {
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Slider(value: $settings.textWidth, in: 100...250, step: 10)
-                            .frame(width: 170)
-                        Text("\(Int(settings.textWidth)) pt")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                    }
+                Toggle("Check for updates automatically", isOn: $settings.checkForUpdatesAutomatically)
+                LabeledContent("Version") {
+                    Text(verbatim: UpdateChecker.currentVersion)
                 }
-                Picker("Auto-scroll after", selection: $settings.holdSeconds) {
-                    Text("5 seconds").tag(5)
-                    Text("10 seconds").tag(10)
-                    Text("20 seconds").tag(20)
-                    Text("30 seconds").tag(30)
-                }
+            } header: {
+                Text("Updates")
             } footer: {
-                Text("Long titles always start scrolling when you hover the menu bar item.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                Footnote("Asks GitHub for the latest release once a day. You can also check from the menu.")
             }
 
             Section {
@@ -140,13 +140,10 @@ struct SettingsView: View {
             } header: {
                 Text("Privacy")
             } footer: {
-                Text("Sends the song title and artist to Apple's iTunes Search when Music has no cover.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                Footnote("Sends the song title and artist to Apple's iTunes Search when Music has no cover.")
             }
         }
         .formStyle(.grouped)
-        .frame(width: 380, height: 720)
         // Pick up an approval granted in System Settings meanwhile.
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             loginItemStatus = SMAppService.mainApp.status
@@ -165,5 +162,212 @@ struct SettingsView: View {
             launchAtLogin = [.enabled, .requiresApproval].contains(SMAppService.mainApp.status)
         }
         loginItemStatus = SMAppService.mainApp.status
+    }
+}
+
+struct MenuBarSettings: View {
+    @ObservedObject var settings: AppSettings
+
+    var body: some View {
+        Form {
+            Section("Show") {
+                Toggle("Show album artwork", isOn: $settings.showArtwork)
+                Toggle("Show title", isOn: $settings.showTitle)
+                Toggle("Show artist name", isOn: $settings.showArtist)
+                    .disabled(!settings.showTitle)
+            }
+
+            Section {
+                Toggle("Shrink to fit short titles", isOn: $settings.fitTitleToContent)
+                LabeledContent("Maximum title width") {
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Slider(value: $settings.textWidth, in: 100...250, step: 10)
+                            .frame(width: 170)
+                        Text("\(Int(settings.textWidth)) pt")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
+                }
+                Picker("Auto-scroll after", selection: $settings.holdSeconds) {
+                    Text("5 seconds").tag(5)
+                    Text("10 seconds").tag(10)
+                    Text("20 seconds").tag(20)
+                    Text("30 seconds").tag(30)
+                }
+                Picker("Hide title when paused", selection: $settings.collapseAfterPauseMinutes) {
+                    Text("Never").tag(0)
+                    Text("After 1 minute").tag(1)
+                    Text("After 5 minutes").tag(5)
+                    Text("After 15 minutes").tag(15)
+                }
+            } header: {
+                Text("Title")
+            } footer: {
+                Footnote("Long titles scroll on their own while music plays, and whenever you hover the menu bar item.")
+            }
+            .disabled(!settings.showTitle)
+
+            Section {
+                Toggle("Show the card on hover", isOn: $settings.showHoverCard)
+                Toggle("Scroll to change the volume", isOn: $settings.scrollChangesVolume)
+                Toggle("Double-click opens the player", isOn: $settings.doubleClickOpensPlayer)
+            } header: {
+                Text("Pointer")
+            } footer: {
+                Footnote("With double-click on, a single click waits a moment before it plays or pauses, to tell the two apart.")
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+struct EqualizerSettings: View {
+    @ObservedObject var settings: AppSettings
+
+    private var styleNote: LocalizedStringKey {
+        switch settings.equalizerStyle {
+        case .spectrum: "Bass on the left, treble on the right, from the player's own audio."
+        case .levels: "How loud the player's audio is, moment to moment."
+        case .simulated: "Decorative movement. MusicBar doesn't listen to any audio, so macOS asks for no recording permission."
+        }
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle("Show equalizer", isOn: $settings.showEqualizer)
+                Picker("Style", selection: $settings.equalizerStyle) {
+                    Text("Frequency bands").tag(EqualizerStyle.spectrum)
+                    Text("Loudness").tag(EqualizerStyle.levels)
+                    Text("Simulated").tag(EqualizerStyle.simulated)
+                }
+                .disabled(!settings.showEqualizer)
+            } footer: {
+                Footnote(styleNote)
+            }
+
+            Section {
+                Picker("Position", selection: $settings.equalizerPosition) {
+                    Text("Left of title").tag(EqualizerPosition.left)
+                    Text("Right of title").tag(EqualizerPosition.right)
+                }
+                Picker("Color", selection: $settings.equalizerColorMode) {
+                    Text("Gradient").tag(EqualizerColorMode.gradient)
+                    Text("Fixed color").tag(EqualizerColorMode.fixed)
+                    Text("Random colors").tag(EqualizerColorMode.random)
+                }
+                if settings.equalizerColorMode == .fixed {
+                    ColorPicker("Custom color", selection: Binding(
+                        get: { settings.equalizerColor },
+                        set: { settings.equalizerColor = $0 }
+                    ), supportsOpacity: false)
+                }
+            }
+            .disabled(!settings.showEqualizer)
+        }
+        .formStyle(.grouped)
+    }
+}
+
+struct ShortcutSettings: View {
+    @ObservedObject var settings: AppSettings
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle("Global shortcuts", isOn: $settings.globalShortcuts)
+            }
+
+            Section {
+                ForEach(HotKeyAction.allCases, id: \.self) { action in
+                    ShortcutRow(action: action, settings: settings)
+                }
+            } footer: {
+                Footnote("Click a shortcut, then press the new keys with ⌃, ⌥ or ⌘. Delete clears it and Esc cancels.")
+            }
+            .disabled(!settings.globalShortcuts)
+        }
+        .formStyle(.grouped)
+        .onDisappear { ShortcutRecording.cancel() }
+    }
+}
+
+private struct ShortcutRow: View {
+    let action: HotKeyAction
+    @ObservedObject var settings: AppSettings
+
+    private var isRecording: Bool { settings.recordingShortcut == action }
+
+    var body: some View {
+        LabeledContent(action.title) {
+            HStack(spacing: 6) {
+                if settings.unavailableShortcuts.contains(action), !isRecording {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.yellow)
+                        .help(Text("Another app is already using this shortcut."))
+                        .accessibilityLabel(Text("Another app is already using this shortcut."))
+                }
+                Button {
+                    if isRecording { ShortcutRecording.cancel() } else { ShortcutRecording.begin(action) }
+                } label: {
+                    Group {
+                        if isRecording {
+                            Text("Press shortcut…")
+                        } else if let shortcut = settings.shortcuts[action] {
+                            Text(verbatim: shortcut.displayText)
+                        } else {
+                            Text("None").foregroundStyle(.secondary)
+                        }
+                    }
+                    .frame(minWidth: 96)
+                }
+            }
+        }
+    }
+}
+
+/// Listens for the key press that becomes an action's new shortcut. One
+/// monitor for the app's lifetime; it lets every key through unless a
+/// recording is under way.
+@MainActor
+enum ShortcutRecording {
+    private static var monitor: Any?
+
+    static func begin(_ action: HotKeyAction) {
+        AppSettings.shared.recordingShortcut = action
+        guard monitor == nil else { return }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            MainActor.assumeIsolated { handle(event) } ? nil : event
+        }
+    }
+
+    static func cancel() {
+        if AppSettings.shared.recordingShortcut != nil {
+            AppSettings.shared.recordingShortcut = nil
+        }
+    }
+
+    /// Returns whether the key press was consumed.
+    private static func handle(_ event: NSEvent) -> Bool {
+        let settings = AppSettings.shared
+        guard let action = settings.recordingShortcut else { return false }
+        let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
+        if modifiers.isEmpty, event.keyCode == 53 { // Esc
+            cancel()
+        } else if modifiers.isEmpty, event.keyCode == 51 || event.keyCode == 117 { // Delete
+            settings.shortcuts = Shortcut.assigning(nil, to: action, in: settings.shortcuts)
+            cancel()
+        } else if let shortcut = Shortcut(
+            keyCode: event.keyCode,
+            modifierFlags: modifiers,
+            characters: event.charactersIgnoringModifiers
+        ) {
+            settings.shortcuts = Shortcut.assigning(shortcut, to: action, in: settings.shortcuts)
+            cancel()
+        } else {
+            NSSound.beep()
+        }
+        return true
     }
 }
