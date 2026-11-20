@@ -168,7 +168,12 @@ final class StatusItemController: NSObject {
             self.model.isHovering = hovering
             // Leaving always reaches the card, so one opened from the
             // keyboard still closes by the pointer rules.
-            guard !hovering || AppSettings.shared.showHoverCard else { return }
+            guard !hovering || AppSettings.shared.showHoverCard else {
+                // No card to load them for, but the menu shows the
+                // favorite and rating too.
+                self.loadPopupDetails(includePlaylists: false)
+                return
+            }
             self.hoverPopup.setHovering(hovering, relativeTo: self.statusItem.button)
         }
         hosting.translatesAutoresizingMaskIntoConstraints = false
@@ -499,6 +504,7 @@ final class StatusItemController: NSObject {
         model.artwork = nil
         model.artworkLarge = nil
         model.isFavorited = nil
+        model.rating = nil
         sleepTimer.trackDidChange()
         guard key != nil else { return }
         recordRecentTrack()

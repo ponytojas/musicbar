@@ -242,3 +242,13 @@
 /* Play a playlist */
 "Play Playlist" = "Play Playlist";
 "Couldn't play %@" = "Couldn't play %@";
+
+/* Rating */
+"Rating" = "Rating";
+"No Rating" = "No Rating";
+"%d stars" = "%d stars";
+"Dislike Song" = "Dislike Song";
+"Couldn't rate this song" = "Couldn't rate this song";
+"Rating removed" = "Rating removed";
+"Marked as disliked" = "Marked as disliked";
+"No longer disliked" = "No longer disliked";

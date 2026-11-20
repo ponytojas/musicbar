@@ -21,6 +21,10 @@ extension StatusItemController {
             guard !Task.isCancelled, self.popupWanted else { return }
             if self.model.isFavorited != favorited { self.model.isFavorited = favorited }
 
+            let rating = await self.music.fetchRating()
+            guard !Task.isCancelled, self.popupWanted else { return }
+            if self.model.rating != rating { self.model.rating = rating }
+
             let modes = await self.music.fetchPlaybackModes()
             guard !Task.isCancelled, self.popupWanted else { return }
             if self.model.playbackModes != modes { self.model.playbackModes = modes }
@@ -138,6 +142,45 @@ extension StatusItemController {
             showPopupNotice(current
                 ? NSLocalizedString("Removed from Favorites", comment: "")
                 : NSLocalizedString("Added to Favorites", comment: ""))
+            hoverPopup.present(relativeTo: statusItem.button)
+        }
+    }
+
+    /// Rates the song 0...5 stars and shows the result in the card.
+    func rate(stars: Int) {
+        let key = currentTrackKey
+        Task {
+            guard await music.setRating(stars: stars) else {
+                showPopupNotice(NSLocalizedString("Couldn't rate this song", comment: ""))
+                hoverPopup.present(relativeTo: statusItem.button)
+                return
+            }
+            if currentTrackKey == key {
+                model.rating = TrackRating(stars: stars, isDisliked: model.rating?.isDisliked)
+            }
+            showPopupNotice(stars == 0
+                ? NSLocalizedString("Rating removed", comment: "")
+                : String(repeating: "★", count: stars))
+            hoverPopup.present(relativeTo: statusItem.button)
+        }
+    }
+
+    func toggleDislike() {
+        let key = currentTrackKey
+        Task {
+            // Read first: the menu may have been built without the state.
+            let disliked = !((await music.fetchRating())?.isDisliked ?? false)
+            guard await music.setDisliked(disliked) else {
+                showPopupNotice(NSLocalizedString("Couldn't rate this song", comment: ""))
+                hoverPopup.present(relativeTo: statusItem.button)
+                return
+            }
+            if currentTrackKey == key {
+                model.rating = TrackRating(stars: model.rating?.stars ?? 0, isDisliked: disliked)
+            }
+            showPopupNotice(disliked
+                ? NSLocalizedString("Marked as disliked", comment: "")
+                : NSLocalizedString("No longer disliked", comment: ""))
             hoverPopup.present(relativeTo: statusItem.button)
         }
     }

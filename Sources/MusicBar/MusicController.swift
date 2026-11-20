@@ -384,6 +384,59 @@ final class MusicController {
         return response.errorNumber == nil
     }
 
+    /// Stars and dislike of Apple Music's current track; nil for Spotify,
+    /// which has neither in its scripting.
+    func fetchRating() async -> TrackRating? {
+        guard activePlayer == .appleMusic,
+              PlayerApp.appleMusic.isRunning,
+              !permissionDeniedPlayers.contains(.appleMusic)
+        else { return nil }
+        let source = Self.script(for: .appleMusic, """
+        if player state is stopped then return ""
+        set trackDisliked to ""
+        try
+            set trackDisliked to (disliked of current track) as text
+        end try
+        return ((rating of current track) as text) & tab & trackDisliked
+        """)
+        let response = await scriptRunner.runString(source)
+        recordPermissionFailure(response.errorNumber, for: .appleMusic)
+        return response.value.flatMap(Self.parseRating)
+    }
+
+    /// Parses "rating⇥disliked". Music counts 20 per star, so a half star
+    /// rounds to the nearest whole one.
+    static func parseRating(_ text: String) -> TrackRating? {
+        let fields = text.split(separator: "\t", omittingEmptySubsequences: false)
+        guard fields.count == 2, let value = Int(fields[0]), (0...100).contains(value) else { return nil }
+        let disliked: Bool? = switch fields[1] {
+        case "true": true
+        case "false": false
+        default: nil
+        }
+        return TrackRating(stars: Int((Double(value) / 20).rounded()), isDisliked: disliked)
+    }
+
+    /// Returns whether Music accepted the rating; 0 stars removes it.
+    func setRating(stars: Int) async -> Bool {
+        guard activePlayer == .appleMusic, PlayerApp.appleMusic.isRunning else { return false }
+        let value = min(5, max(0, stars)) * 20
+        let response = await scriptRunner.runCommand(
+            Self.script(for: .appleMusic, "set rating of current track to \(value)")
+        )
+        recordPermissionFailure(response.errorNumber, for: .appleMusic)
+        return response.errorNumber == nil
+    }
+
+    func setDisliked(_ disliked: Bool) async -> Bool {
+        guard activePlayer == .appleMusic, PlayerApp.appleMusic.isRunning else { return false }
+        let response = await scriptRunner.runCommand(
+            Self.script(for: .appleMusic, "set disliked of current track to \(disliked)")
+        )
+        recordPermissionFailure(response.errorNumber, for: .appleMusic)
+        return response.errorNumber == nil
+    }
+
     /// Regular (non-smart, non-folder) Apple Music playlists; empty for
     /// Spotify, whose scripting can't reach playlists.
     func fetchPlaylists() async -> [Playlist] {

@@ -18,6 +18,14 @@ struct PlaybackModes: Equatable {
     var repeatMode: RepeatMode
 }
 
+/// Apple Music's star rating and "dislike" mark for a song.
+struct TrackRating: Equatable, Sendable {
+    /// 0 (unrated) through 5.
+    var stars: Int
+    /// nil on versions of Music without the property.
+    var isDisliked: Bool?
+}
+
 struct OutputDevice: Identifiable, Equatable {
     let id: String
     let name: String
@@ -98,6 +106,8 @@ final class TrackModel: ObservableObject {
     @Published var progress: PlaybackProgress?
     /// Apple Music favorite state; nil when unknown or unsupported (Spotify).
     @Published var isFavorited: Bool?
+    /// Apple Music rating; nil when unknown or unsupported (Spotify).
+    @Published var rating: TrackRating?
     /// Apple Music playlists the card can add to; empty for Spotify.
     @Published var playlists: [Playlist] = []
     /// Shuffle and repeat of the active player; nil until fetched.
@@ -142,5 +152,6 @@ final class TrackModel: ObservableObject {
         if artworkLarge != nil { artworkLarge = nil }
         if progress != nil { progress = nil }
         if isFavorited != nil { isFavorited = nil }
+        if rating != nil { rating = nil }
     }
 }

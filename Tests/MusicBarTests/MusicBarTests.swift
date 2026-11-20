@@ -110,6 +110,19 @@ final class MusicBarTests: XCTestCase {
         XCTAssertNil(MusicController.parsePlaybackModes("true"))
     }
 
+    func testRatingParsing() {
+        XCTAssertEqual(MusicController.parseRating("60\ttrue"), TrackRating(stars: 3, isDisliked: true))
+        XCTAssertEqual(MusicController.parseRating("100\tfalse"), TrackRating(stars: 5, isDisliked: false))
+        // Older Music has no "disliked"; the stars still come through.
+        XCTAssertEqual(MusicController.parseRating("0\t"), TrackRating(stars: 0, isDisliked: nil))
+        // Half stars round to the nearest whole one.
+        XCTAssertEqual(MusicController.parseRating("50\t")?.stars, 3)
+        XCTAssertEqual(MusicController.parseRating("30\t")?.stars, 2)
+        XCTAssertNil(MusicController.parseRating(""))
+        XCTAssertNil(MusicController.parseRating("many\ttrue"))
+        XCTAssertNil(MusicController.parseRating("140\ttrue"))
+    }
+
     func testOutputDeviceParsing() {
         let devices = MusicController.parseOutputDevices("0000000000000000\ttrue\tMac\n000068CAC4EEA768\tfalse\tAirPods\tPro\nnot-hex\tfalse\tX\n")
         XCTAssertEqual(devices, [

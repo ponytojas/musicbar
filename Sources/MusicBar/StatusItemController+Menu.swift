@@ -14,6 +14,10 @@ extension StatusItemController {
             let favoriteItem = item(NSLocalizedString("Favorite Song", comment: ""), #selector(favoriteSong))
             favoriteItem.state = model.isFavorited == true ? .on : .off
             menu.addItem(favoriteItem)
+            menu.addItem(ratingMenuItem())
+            let dislikeItem = item(NSLocalizedString("Dislike Song", comment: ""), #selector(dislikeSong))
+            dislikeItem.state = model.rating?.isDisliked == true ? .on : .off
+            menu.addItem(dislikeItem)
             menu.addItem(item(NSLocalizedString("Show in Music", comment: ""), #selector(showInMusic)))
         }
         if model.hasTrack, music.activePlayer == .spotify {
@@ -67,6 +71,33 @@ extension StatusItemController {
             added = true
         }
         if added { menu.addItem(.separator()) }
+    }
+
+    private func ratingMenuItem() -> NSMenuItem {
+        let ratingItem = NSMenuItem(title: NSLocalizedString("Rating", comment: ""), action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+        for stars in 0...5 {
+            let title = stars == 0
+                ? NSLocalizedString("No Rating", comment: "")
+                : String(repeating: "★", count: stars)
+            let option = item(title, #selector(rateSong(_:)))
+            option.tag = stars
+            option.state = model.rating?.stars == stars ? .on : .off
+            if stars > 0 {
+                option.setAccessibilityLabel(String(format: NSLocalizedString("%d stars", comment: ""), stars))
+            }
+            submenu.addItem(option)
+        }
+        ratingItem.submenu = submenu
+        return ratingItem
+    }
+
+    @objc private func rateSong(_ sender: NSMenuItem) {
+        rate(stars: sender.tag)
+    }
+
+    @objc private func dislikeSong() {
+        toggleDislike()
     }
 
     /// Music's playlists, to start one without opening Music. Spotify's

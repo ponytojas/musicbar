@@ -242,3 +242,13 @@
 /* Play a playlist */
 "Play Playlist" = "Reproducir playlist";
 "Couldn't play %@" = "No se pudo reproducir %@";
+
+/* Rating */
+"Rating" = "Valoración";
+"No Rating" = "Sin valoración";
+"%d stars" = "%d estrellas";
+"Dislike Song" = "No me gusta";
+"Couldn't rate this song" = "No se pudo valorar esta canción";
+"Rating removed" = "Valoración eliminada";
+"Marked as disliked" = "Marcada como «no me gusta»";
+"No longer disliked" = "Ya no está marcada como «no me gusta»";
