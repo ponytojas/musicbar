@@ -255,3 +255,12 @@
 
 /* Song link */
 "Couldn't find a link for this song" = "No se encontró un enlace para esta canción";
+
+/* Support */
+"Support" = "Soporte";
+"Copy Diagnostics" = "Copiar diagnóstico";
+"Copied" = "Copiado";
+"Reset All Settings…" = "Restablecer todos los ajustes…";
+"Reset all settings to their defaults?" = "¿Restablecer todos los ajustes a sus valores por defecto?";
+"Reset" = "Restablecer";
+"Diagnostics describe your setup for a bug report. They never include what you listen to." = "El diagnóstico describe tu configuración para un informe de errores. Nunca incluye lo que escuchas.";

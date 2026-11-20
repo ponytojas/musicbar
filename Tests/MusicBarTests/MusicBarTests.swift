@@ -557,6 +557,64 @@ final class MusicBarTests: XCTestCase {
         XCTAssertNil(HotKeyAction(id: UInt32(HotKeyAction.allCases.count + 1)))
     }
 
+    // MARK: - Support
+
+    func testDiagnosticsDescribeTheSetupNotTheListening() {
+        let diagnostics = Diagnostics(
+            version: "1.2", build: "60", system: "Version 26.0", architecture: "arm64", language: "es",
+            installedPlayers: [.appleMusic], runningPlayers: [], activePlayer: .appleMusic,
+            hasTrack: true, isPlaying: false, playersWithoutPermission: [.spotify],
+            equalizerShown: true, equalizerStyle: .spectrum, captureFailed: true,
+            playerMode: .automatic, unavailableShortcuts: [.toggleCard], notificationsEnabled: false
+        )
+        let report = diagnostics.report
+        XCTAssertTrue(report.contains("MusicBar 1.2 (60)"))
+        XCTAssertTrue(report.contains("Players installed: Music"))
+        XCTAssertTrue(report.contains("Players running: none"))
+        XCTAssertTrue(report.contains("Automation refused for: Spotify"))
+        XCTAssertTrue(report.contains("Equalizer: spectrum, audio capture failed"))
+        XCTAssertTrue(report.contains("Track on display: yes, paused"))
+        XCTAssertTrue(report.contains("toggleCard"))
+        XCTAssertFalse(Diagnostics.architecture.isEmpty)
+        // The type has nowhere to put a title or artist.
+        let fields = Mirror(reflecting: diagnostics).children.compactMap(\.label)
+        XCTAssertFalse(fields.contains { ["title", "artist", "album", "recent"].contains($0) })
+    }
+
+    func testResetRestoresEverySetting() {
+        let settings = AppSettings.shared
+        defer { settings.resetToDefaults() }
+        settings.resetToDefaults()
+        func snapshot() -> [String: String] {
+            Dictionary(uniqueKeysWithValues: AppSettings.persistedKeys.map {
+                ($0, String(describing: UserDefaults.standard.object(forKey: $0)))
+            })
+        }
+        let defaults = snapshot()
+        XCTAssertTrue(AppSettings.persistedKeys.contains("titleFormat"))
+        XCTAssertFalse(AppSettings.persistedKeys.contains("recordingShortcut"))
+        // Every setting ends up saved again, so none was skipped by the reset.
+        for key in AppSettings.persistedKeys {
+            XCTAssertNotNil(UserDefaults.standard.object(forKey: key), "\(key) is missing from resetToDefaults()")
+        }
+
+        settings.playerMode = .spotify
+        settings.showArtwork = false
+        settings.titleFormat = "{album}"
+        settings.textWidth = 240
+        settings.equalizerStyle = .simulated
+        settings.equalizerSensitivity = 1.7
+        settings.doubleClickOpensPlayer = true
+        settings.shortcuts = [:]
+        XCTAssertNotEqual(snapshot(), defaults)
+
+        settings.resetToDefaults()
+        XCTAssertEqual(snapshot(), defaults)
+        XCTAssertEqual(settings.playerMode, .automatic)
+        XCTAssertEqual(settings.titleFormat, TitleFormat.titleAndArtist)
+        XCTAssertEqual(settings.shortcuts, HotKeyAction.defaultShortcuts)
+    }
+
     // MARK: - Sleep timer
 
     private func makeDefaults() throws -> UserDefaults {

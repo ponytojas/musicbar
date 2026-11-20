@@ -160,6 +160,53 @@ final class AppSettings: ObservableObject {
 
     private init() {}
 
+    /// Puts every setting back to its default. A fresh instance reads the
+    /// defaults once the saved values are gone, and its values are copied
+    /// over so views watching this one update. A new setting needs a line
+    /// here; `testResetRestoresEverySetting` fails until it has one.
+    func resetToDefaults() {
+        for key in Self.persistedKeys {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+        // From versions before the text template.
+        UserDefaults.standard.removeObject(forKey: "showArtist")
+        let fresh = AppSettings()
+        playerMode = fresh.playerMode
+        showArtwork = fresh.showArtwork
+        showEqualizer = fresh.showEqualizer
+        showTitle = fresh.showTitle
+        titleFormat = fresh.titleFormat
+        titleFontSize = fresh.titleFontSize
+        fitTitleToContent = fresh.fitTitleToContent
+        hideWhenNoPlayer = fresh.hideWhenNoPlayer
+        collapseAfterPauseMinutes = fresh.collapseAfterPauseMinutes
+        lookUpArtworkOnline = fresh.lookUpArtworkOnline
+        checkForUpdatesAutomatically = fresh.checkForUpdatesAutomatically
+        notifyOnTrackChange = fresh.notifyOnTrackChange
+        sleepTimerFadeOut = fresh.sleepTimerFadeOut
+        showHoverCard = fresh.showHoverCard
+        scrollChangesVolume = fresh.scrollChangesVolume
+        doubleClickOpensPlayer = fresh.doubleClickOpensPlayer
+        textWidth = fresh.textWidth
+        holdSeconds = fresh.holdSeconds
+        equalizerPosition = fresh.equalizerPosition
+        equalizerStyle = fresh.equalizerStyle
+        equalizerSensitivity = fresh.equalizerSensitivity
+        equalizerColorMode = fresh.equalizerColorMode
+        equalizerColorHex = fresh.equalizerColorHex
+        globalShortcuts = fresh.globalShortcuts
+        shortcuts = fresh.shortcuts
+    }
+
+    /// The UserDefaults key of every saved setting. Each property is saved
+    /// under its own name, so the list is read off the properties.
+    static var persistedKeys: [String] {
+        let transient = ["recordingShortcut", "unavailableShortcuts"]
+        return Mirror(reflecting: shared).children
+            .compactMap { $0.label.map { String($0.dropFirst()) } }
+            .filter { !transient.contains($0) }
+    }
+
     private nonisolated static func stored<Value>(_ key: String, _ fallback: Value) -> Value {
         UserDefaults.standard.object(forKey: key) as? Value ?? fallback
     }

@@ -255,3 +255,12 @@
 
 /* Song link */
 "Couldn't find a link for this song" = "Couldn't find a link for this song";
+
+/* Support */
+"Support" = "Support";
+"Copy Diagnostics" = "Copy Diagnostics";
+"Copied" = "Copied";
+"Reset All Settings…" = "Reset All Settings…";
+"Reset all settings to their defaults?" = "Reset all settings to their defaults?";
+"Reset" = "Reset";
+"Diagnostics describe your setup for a bug report. They never include what you listen to." = "Diagnostics describe your setup for a bug report. They never include what you listen to.";

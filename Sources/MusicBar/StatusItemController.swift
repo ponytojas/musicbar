@@ -114,6 +114,7 @@ final class StatusItemController: NSObject {
         configureNotifications()
         model.sleepTimerActive = sleepTimer.isActive
         music.onPermissionChange = { [weak self] in self?.updateAccessibility() }
+        settingsWindow.diagnostics = { [weak self] in self?.diagnostics.report ?? "" }
         Task {
             await AutomationPermission.prepare(for: PlayerApp.allCases.filter(\.isRunning))
             // After the permission alerts, which are modal and would cover it.
@@ -341,6 +342,30 @@ final class StatusItemController: NSObject {
             // Catch up on anything missed while refreshes were paused.
             await self.refresh()
         }
+    }
+
+    private var diagnostics: Diagnostics {
+        let settings = AppSettings.shared
+        let info = Bundle.main.infoDictionary
+        return Diagnostics(
+            version: UpdateChecker.currentVersion,
+            build: info?["CFBundleVersion"] as? String ?? "?",
+            system: ProcessInfo.processInfo.operatingSystemVersionString,
+            architecture: Diagnostics.architecture,
+            language: Bundle.main.preferredLocalizations.first ?? "?",
+            installedPlayers: PlayerApp.allCases.filter(\.isInstalled),
+            runningPlayers: PlayerApp.allCases.filter(\.isRunning),
+            activePlayer: music.activePlayer,
+            hasTrack: model.hasTrack,
+            isPlaying: model.isPlaying,
+            playersWithoutPermission: PlayerApp.allCases.filter(music.permissionDeniedPlayers.contains),
+            equalizerShown: settings.showEqualizer,
+            equalizerStyle: settings.equalizerStyle,
+            captureFailed: captureFailed,
+            playerMode: settings.playerMode,
+            unavailableShortcuts: HotKeyAction.allCases.filter(settings.unavailableShortcuts.contains),
+            notificationsEnabled: settings.notifyOnTrackChange
+        )
     }
 
     // MARK: - Sleep timer

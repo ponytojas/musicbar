@@ -6,10 +6,12 @@ import SwiftUI
 @MainActor
 final class SettingsWindowController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
+    /// Text for the Copy Diagnostics button; set by whoever knows the state.
+    var diagnostics: () -> String = { "" }
 
     func show() {
         if window == nil {
-            let hosting = NSHostingController(rootView: SettingsView(settings: .shared))
+            let hosting = NSHostingController(rootView: SettingsView(settings: .shared, diagnostics: diagnostics))
             let window = NSWindow(contentViewController: hosting)
             window.title = NSLocalizedString("MusicBar Settings", comment: "")
             window.styleMask = [.titled, .closable]
@@ -35,10 +37,11 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 
 struct SettingsView: View {
     @ObservedObject var settings: AppSettings
+    var diagnostics: () -> String = { "" }
 
     var body: some View {
         TabView {
-            GeneralSettings(settings: settings)
+            GeneralSettings(settings: settings, diagnostics: diagnostics)
                 .tabItem { Label("General", systemImage: "gearshape") }
             MenuBarSettings(settings: settings)
                 .tabItem { Label("Menu Bar", systemImage: "menubar.rectangle") }
@@ -71,6 +74,9 @@ private struct Footnote: View {
 
 struct GeneralSettings: View {
     @ObservedObject var settings: AppSettings
+    var diagnostics: () -> String = { "" }
+    @State private var copiedDiagnostics = false
+    @State private var confirmsReset = false
     @State private var loginItemStatus = SMAppService.mainApp.status
     @State private var launchAtLogin = [.enabled, .requiresApproval].contains(SMAppService.mainApp.status)
     @State private var notificationsDenied = false
@@ -142,8 +148,28 @@ struct GeneralSettings: View {
             } footer: {
                 Footnote("Sends the song title and artist to Apple's iTunes Search when Music has no cover.")
             }
+
+            Section {
+                HStack {
+                    Button(copiedDiagnostics ? "Copied" : "Copy Diagnostics") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(diagnostics(), forType: .string)
+                        copiedDiagnostics = true
+                    }
+                    Spacer()
+                    Button("Reset All Settings…") { confirmsReset = true }
+                }
+            } header: {
+                Text("Support")
+            } footer: {
+                Footnote("Diagnostics describe your setup for a bug report. They never include what you listen to.")
+            }
         }
         .formStyle(.grouped)
+        .confirmationDialog("Reset all settings to their defaults?", isPresented: $confirmsReset) {
+            Button("Reset", role: .destructive) { settings.resetToDefaults() }
+            Button("Cancel", role: .cancel) {}
+        }
         // Pick up an approval granted in System Settings meanwhile.
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             loginItemStatus = SMAppService.mainApp.status

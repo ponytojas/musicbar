@@ -72,7 +72,10 @@ struct Shortcut: Codable, Equatable, Sendable {
 
     static func encode(_ shortcuts: [HotKeyAction: Shortcut]) -> Data? {
         let byName = Dictionary(uniqueKeysWithValues: shortcuts.map { ($0.key.rawValue, $0.value) })
-        return try? JSONEncoder().encode(byName)
+        // Sorted, so the same shortcuts always save as the same bytes.
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        return try? encoder.encode(byName)
     }
 
     /// Unknown action names (from a newer or older version) are dropped.
