@@ -16,6 +16,8 @@ struct PopupActions {
     var setVolume: @MainActor (Int) -> Void
     /// Relative volume step, from the keyboard.
     var changeVolume: @MainActor (Int) -> Void
+    /// Pins the card open as a mini player, or lets it go.
+    var togglePin: @MainActor () -> Void = {}
     var toggleShuffle: @MainActor () -> Void
     var cycleRepeat: @MainActor () -> Void
     var selectOutput: @MainActor (OutputDevice) -> Void
@@ -47,7 +49,9 @@ private final class CardPanel: NSPanel {
 /// card hides once the pointer has left both. Opened with the keyboard
 /// shortcut instead, it takes key presses: Space plays or pauses, ← and →
 /// change track, ↑ and ↓ the volume, F favorites, S shuffles, R repeats,
-/// and Esc closes it.
+/// and Esc closes it. Pinned, it becomes a mini player: it stays open
+/// whatever the pointer does, can be dragged anywhere by its cover, and
+/// comes back where it was left after a relaunch.
 @MainActor
 final class HoverPopupController {
     private var panel: CardPanel?
@@ -68,8 +72,12 @@ final class HoverPopupController {
     /// A menu (e.g. the card's playlist menu) is open; keep the card up.
     private var isMenuTracking = false
     /// Opened from the keyboard: stay up until then regardless of the pointer.
-    private var pinnedUntil: Date?
-    private var pinTask: Task<Void, Never>?
+    private var heldUntil: Date?
+    private var holdTask: Task<Void, Never>?
+    private(set) var isPinned = UserDefaults.standard.bool(forKey: HoverPopupController.pinnedKey)
+
+    private static let pinnedKey = "cardPinned"
+    private static let pinnedOriginKey = "cardPinnedOrigin"
 
     var isShown: Bool { panel?.isVisible ?? false }
 
@@ -77,12 +85,27 @@ final class HoverPopupController {
         self.model = model
         self.actions = actions
         self.onWillShow = onWillShow
+        model.isCardPinned = isPinned
         // objectWillChange fires before the new value lands; hop a run loop
         // turn so the relayout measures the updated content.
         model.objectWillChange
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
-                MainActor.assumeIsolated { self?.relayoutIfVisible() }
+                MainActor.assumeIsolated {
+                    self?.reopenPinnedIfNeeded()
+                    self?.relayoutIfVisible()
+                }
+            }
+            .store(in: &cancellables)
+        // Remember where a pinned card is dragged to.
+        NotificationCenter.default.publisher(for: NSWindow.didMoveNotification)
+            .sink { [weak self] note in
+                MainActor.assumeIsolated {
+                    guard let self, self.isPinned, let panel = self.panel, note.object as? NSWindow === panel,
+                          panel.isVisible
+                    else { return }
+                    UserDefaults.standard.set(NSStringFromPoint(panel.frame.origin), forKey: Self.pinnedOriginKey)
+                }
             }
             .store(in: &cancellables)
         // Menu tracking notifications arrive on the main thread, inside the
@@ -121,13 +144,69 @@ final class HoverPopupController {
         }
     }
 
-    /// Hides right away, e.g. when the status item itself is clicked.
+    /// Hides right away, e.g. when the status item itself is clicked. A
+    /// pinned card stays: only unpinning closes it.
     func dismiss() {
         showTask?.cancel()
         hideTask?.cancel()
-        pinTask?.cancel()
-        pinnedUntil = nil
+        holdTask?.cancel()
+        heldUntil = nil
+        guard !isPinned else { return releaseKeyboard() }
         hide()
+    }
+
+    /// Pins the card open where it is, or unpins it back to hover rules.
+    func togglePinned() {
+        isPinned.toggle()
+        UserDefaults.standard.set(isPinned, forKey: Self.pinnedKey)
+        model.isCardPinned = isPinned
+        guard let panel else { return }
+        panel.level = isPinned ? .floating : .statusBar
+        if isPinned {
+            UserDefaults.standard.set(NSStringFromPoint(panel.frame.origin), forKey: Self.pinnedOriginKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: Self.pinnedOriginKey)
+            // Back under the item, then gone once the pointer leaves.
+            if let anchorButton { layout(panel, under: anchorButton) }
+            scheduleHideCheck()
+        }
+    }
+
+    /// Reopens a card that was pinned when MusicBar last quit.
+    func restorePinned(relativeTo button: NSStatusBarButton?) {
+        anchorButton = button
+        reopenPinnedIfNeeded()
+    }
+
+    /// A pinned card hides while nothing is queued and returns with the
+    /// next song.
+    private func reopenPinnedIfNeeded() {
+        guard isPinned, !isShown, model.hasTrack, let anchorButton else { return }
+        onWillShow()
+        show(relativeTo: anchorButton)
+    }
+
+    /// Where a pinned card should reappear: its saved spot, if that is
+    /// still on a screen (a display may have been unplugged since).
+    static func restoredOrigin(_ saved: NSPoint?, size: NSSize, screens: [NSRect]) -> NSPoint? {
+        guard let saved else { return nil }
+        let frame = NSRect(origin: saved, size: size)
+        // Mostly visible is enough; it can always be dragged the rest.
+        let visible = screens.contains { screen in
+            let overlap = screen.intersection(frame)
+            return !overlap.isNull && overlap.width * overlap.height >= frame.width * frame.height / 2
+        }
+        return visible ? saved : nil
+    }
+
+    /// Hands the keyboard back to the app in front without hiding the
+    /// card. A panel can't simply stop being key; taking it off screen for
+    /// an instant is what makes the system pick another window.
+    private func releaseKeyboard() {
+        guard let panel, panel.isKeyWindow else { return }
+        panel.allowsKey = false
+        panel.orderOut(nil)
+        panel.orderFrontRegardless()
     }
 
     /// Opens the card without hovering, e.g. from a keyboard shortcut. It
@@ -135,13 +214,13 @@ final class HoverPopupController {
     /// the usual pointer rules. `takingKeyboard` also sends it key presses.
     func present(
         relativeTo button: NSStatusBarButton?,
-        pinnedFor seconds: TimeInterval = 0,
+        heldFor seconds: TimeInterval = 0,
         takingKeyboard: Bool = false
     ) {
         guard model.hasTrack else { return }
         showTask?.cancel()
         hideTask?.cancel()
-        pin(for: seconds)
+        hold(for: seconds)
         if !isShown {
             onWillShow()
             show(relativeTo: button)
@@ -153,26 +232,29 @@ final class HoverPopupController {
     }
 
     func togglePresented(relativeTo button: NSStatusBarButton?) {
-        if isShown {
+        if isShown, isPinned, panel?.isKeyWindow != true {
+            // Already open for good: the shortcut gives it the keyboard.
+            present(relativeTo: button, heldFor: 0, takingKeyboard: true)
+        } else if isShown {
             dismiss()
         } else {
-            present(relativeTo: button, pinnedFor: Self.keyboardPin, takingKeyboard: true)
+            present(relativeTo: button, heldFor: Self.keyboardHold, takingKeyboard: true)
         }
     }
 
     /// How long a keyboard-opened card waits for the next key press.
-    private static let keyboardPin: TimeInterval = 5
+    private static let keyboardHold: TimeInterval = 5
 
-    /// Keeps the card up for `seconds` whatever the pointer does; 0 unpins.
-    private func pin(for seconds: TimeInterval) {
-        pinTask?.cancel()
-        pinnedUntil = nil
+    /// Keeps the card up for `seconds` whatever the pointer does; 0 lets go.
+    private func hold(for seconds: TimeInterval) {
+        holdTask?.cancel()
+        heldUntil = nil
         guard seconds > 0 else { return }
-        pinnedUntil = Date().addingTimeInterval(seconds)
-        pinTask = Task { @MainActor [weak self] in
+        heldUntil = Date().addingTimeInterval(seconds)
+        holdTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(seconds))
             guard !Task.isCancelled, let self else { return }
-            self.pinnedUntil = nil
+            self.heldUntil = nil
             self.scheduleHideCheck()
         }
     }
@@ -199,7 +281,7 @@ final class HoverPopupController {
             }
         }
         // Each key press buys the card more time.
-        pin(for: Self.keyboardPin)
+        hold(for: Self.keyboardHold)
         return true
     }
 
@@ -210,6 +292,7 @@ final class HoverPopupController {
         let panel = self.panel ?? makePanel()
         self.panel = panel
 
+        panel.level = isPinned ? .floating : .statusBar
         // Gentle fade + downward drift in.
         guard let origin = layout(panel, under: button), !panel.isVisible else { return }
         panel.alphaValue = 0
@@ -240,9 +323,24 @@ final class HoverPopupController {
         keepingHorizontalPosition: Bool = false
     ) -> NSPoint? {
         guard let buttonWindow = button.window else { return nil }
+        let wasVisible = panel.isVisible
+        let top = panel.frame.maxY
         let fittingSize = hostingView.fittingSize
         hostingView.frame.size = fittingSize
         panel.setContentSize(fittingSize)
+
+        if isPinned {
+            // Stays where it was put: on screen, keep its top-left corner;
+            // reopening, go back to the saved spot if it still exists.
+            let saved = UserDefaults.standard.string(forKey: Self.pinnedOriginKey).map(NSPointFromString)
+            let pinnedOrigin = wasVisible
+                ? NSPoint(x: panel.frame.minX, y: top - panel.frame.height)
+                : Self.restoredOrigin(saved, size: panel.frame.size, screens: NSScreen.screens.map(\.visibleFrame))
+            if let pinnedOrigin {
+                panel.setFrameOrigin(pinnedOrigin)
+                return pinnedOrigin
+            }
+        }
 
         // Centered under the status item, just below the menu bar.
         let buttonFrame = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
@@ -267,8 +365,9 @@ final class HoverPopupController {
         hideTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(300))
             guard let self, !Task.isCancelled,
+                  !self.isPinned,
                   !self.isMenuTracking,
-                  self.pinnedUntil == nil,
+                  self.heldUntil == nil,
                   self.model.popupNotice == nil,
                   !self.pointerIsInside()
             else { return }
@@ -312,7 +411,7 @@ final class HoverPopupController {
         panel.onResignKey = { [weak self] in
             guard let self else { return }
             self.panel?.allowsKey = false
-            self.pin(for: 0)
+            self.hold(for: 0)
             self.scheduleHideCheck()
         }
         return panel
@@ -328,6 +427,21 @@ struct HoverPopupView: View {
     private let coverSize: CGFloat = 168
 
     private var coverImage: NSImage? { model.artworkLarge ?? model.artwork }
+
+    private var pinButton: some View {
+        let title: LocalizedStringKey = model.isCardPinned ? "Unpin Card" : "Keep Card Open"
+        return Button(action: actions.togglePin) {
+            Image(systemName: model.isCardPinned ? "pin.fill" : "pin")
+                .font(.system(size: 10, weight: .semibold))
+                .frame(width: 22, height: 22)
+                .background(.ultraThinMaterial, in: Circle())
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .padding(6)
+        .help(Text(title))
+        .accessibilityLabel(Text(title))
+    }
 
     /// Where along the progress bar a click or drag at `x` lands, 0...1.
     static func seekFraction(x: CGFloat, width: CGFloat) -> Double {
@@ -346,6 +460,9 @@ struct HoverPopupView: View {
                         .strokeBorder(.white.opacity(0.12), lineWidth: 0.5)
                 }
                 .shadow(color: .black.opacity(0.35), radius: 10, y: 5)
+                // A pinned card is moved by its cover.
+                .overlay { if model.isCardPinned { WindowDragHandle() } }
+                .overlay(alignment: .topTrailing) { pinButton }
 
             VStack(spacing: 3) {
                 // One line each keeps the card's height fixed; the tooltip
@@ -412,6 +529,21 @@ struct HoverPopupView: View {
                 }
         }
     }
+}
+
+/// An invisible layer that drags the window it is in.
+private struct WindowDragHandle: NSViewRepresentable {
+    final class Handle: NSView {
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+        override func mouseDown(with event: NSEvent) {
+            window?.performDrag(with: event)
+        }
+    }
+
+    func makeNSView(context: Context) -> Handle { Handle() }
+
+    func updateNSView(_ view: Handle, context: Context) {}
 }
 
 /// Thin bar with elapsed and total time, or a notice in place of the times.

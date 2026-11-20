@@ -153,6 +153,8 @@ final class TrackModel: ObservableObject {
     @Published var screenActive: Bool = true
     /// Paused long enough that the menu bar shows only the music note.
     @Published var isCollapsed: Bool = false
+    /// The card is pinned open as a mini player.
+    @Published var isCardPinned: Bool = false
     /// A sleep timer is counting down; the menu bar shows a small moon.
     @Published var sleepTimerActive: Bool = false
 

@@ -27,7 +27,7 @@ final class StatusItemController: NSObject {
             Task { @MainActor [weak self] in self?.captureAvailabilityChanged(available) }
         }
     )
-    lazy var hoverPopup = HoverPopupController(
+    lazy var hoverPopup: HoverPopupController = HoverPopupController(
         model: model,
         actions: PopupActions(
             playPause: { [weak self] in self?.togglePlayback() },
@@ -38,6 +38,7 @@ final class StatusItemController: NSObject {
             seek: { [weak self] position in self?.seek(to: position) },
             setVolume: { [weak self] volume in self?.setVolume(volume) },
             changeVolume: { [weak self] delta in self?.changeVolume(by: delta) },
+            togglePin: { [weak self] in self?.hoverPopup.togglePinned() },
             toggleShuffle: { [weak self] in self?.toggleShuffle() },
             cycleRepeat: { [weak self] in self?.cycleRepeat() },
             selectOutput: { [weak self] device in self?.selectOutput(device) }
@@ -129,6 +130,7 @@ final class StatusItemController: NSObject {
             // After the permission alerts, which are modal and would cover it.
             welcomeWindow.showOnFirstLaunch()
             await refresh()
+            hoverPopup.restorePinned(relativeTo: statusItem.button)
             checkForUpdatesIfDue()
         }
 
@@ -450,8 +452,6 @@ final class StatusItemController: NSObject {
 
         stateGeneration += 1
         apply(nowPlaying, from: player)
-        // Play/pause or a new track while the popup is open moves the clock.
-        if hoverPopup.isShown { loadPopupDetails(includePlaylists: false) }
     }
 
     /// Reads the players directly. Calls made while one is running fold
@@ -509,6 +509,10 @@ final class StatusItemController: NSObject {
         updateAccessibility()
         preloadPlaylistsIfNeeded()
         loadMenuBarProgress()
+        // Play/pause or a new track while the card is open moves its
+        // clock; for a pinned card the periodic reconcile also keeps the
+        // clock from drifting.
+        if hoverPopup.isShown { loadPopupDetails(includePlaylists: false) }
     }
 
     /// The menu is built on the spot and can't wait for a script, so the

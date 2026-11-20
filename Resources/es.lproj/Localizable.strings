@@ -285,3 +285,7 @@
 "Progress" = "Progreso";
 "Line under the title" = "Línea bajo el título";
 "Time remaining" = "Tiempo restante";
+
+/* Pinned card */
+"Keep Card Open" = "Mantener la tarjeta abierta";
+"Unpin Card" = "Soltar la tarjeta";

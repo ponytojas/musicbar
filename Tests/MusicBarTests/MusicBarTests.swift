@@ -516,6 +516,24 @@ final class MusicBarTests: XCTestCase {
         XCTAssertEqual(MenuBarProgressModel.remainingLabel(-4), "-0:00")
     }
 
+    func testPinnedCardReturnsOnlyToASpotStillOnScreen() {
+        let size = NSSize(width: 200, height: 340)
+        let screens = [NSRect(x: 0, y: 0, width: 1_440, height: 900)]
+        XCTAssertEqual(
+            HoverPopupController.restoredOrigin(NSPoint(x: 600, y: 300), size: size, screens: screens),
+            NSPoint(x: 600, y: 300)
+        )
+        // Hanging a little off the edge is fine; it can be dragged back.
+        XCTAssertNotNil(HoverPopupController.restoredOrigin(NSPoint(x: 1_300, y: 300), size: size, screens: screens))
+        // More than half off screen: not worth hunting for.
+        XCTAssertNil(HoverPopupController.restoredOrigin(NSPoint(x: 1_380, y: 300), size: size, screens: screens))
+        // It was on a display that is no longer connected.
+        XCTAssertNil(HoverPopupController.restoredOrigin(NSPoint(x: 2_000, y: 300), size: size, screens: screens))
+        XCTAssertNil(HoverPopupController.restoredOrigin(NSPoint(x: 1_400, y: 880), size: size, screens: screens))
+        XCTAssertNil(HoverPopupController.restoredOrigin(nil, size: size, screens: screens))
+        XCTAssertNil(HoverPopupController.restoredOrigin(NSPoint(x: 600, y: 300), size: size, screens: []))
+    }
+
     func testSeekFractionClampsToTheBar() {
         XCTAssertEqual(HoverPopupView.seekFraction(x: 42, width: 168), 0.25, accuracy: 0.0001)
         XCTAssertEqual(HoverPopupView.seekFraction(x: -20, width: 168), 0)
