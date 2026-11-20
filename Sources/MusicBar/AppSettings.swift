@@ -98,6 +98,10 @@ final class AppSettings: ObservableObject {
     @Published var notifyOnTrackChange: Bool = AppSettings.stored("notifyOnTrackChange", false) {
         didSet { Self.save(notifyOnTrackChange, "notifyOnTrackChange") }
     }
+    /// Lower the volume through the sleep timer's last half minute.
+    @Published var sleepTimerFadeOut: Bool = AppSettings.stored("sleepTimerFadeOut", true) {
+        didSet { Self.save(sleepTimerFadeOut, "sleepTimerFadeOut") }
+    }
     @Published var showHoverCard: Bool = AppSettings.stored("showHoverCard", true) {
         didSet { Self.save(showHoverCard, "showHoverCard") }
     }

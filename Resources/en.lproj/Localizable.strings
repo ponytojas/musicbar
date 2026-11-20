@@ -231,3 +231,10 @@
 "Copy" = "Copy";
 "Paste" = "Paste";
 "Select All" = "Select All";
+
+/* Sleep timer options */
+"Custom…" = "Custom…";
+"Fade Out Before Pausing" = "Fade Out Before Pausing";
+"Pause after how many minutes?" = "Pause after how many minutes?";
+"Start" = "Start";
+"Cancel" = "Cancel";

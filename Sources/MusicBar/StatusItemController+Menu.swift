@@ -112,8 +112,41 @@ extension StatusItemController {
             option.state = sleepTimer.mode == mode ? .on : .off
             submenu.addItem(option)
         }
+        // A countdown that isn't one of the presets was typed in here.
+        let customItem = item(NSLocalizedString("Custom…", comment: ""), #selector(setCustomSleepTimer))
+        if case let .minutes(minutes) = sleepTimer.mode, ![15, 30, 60].contains(minutes) {
+            customItem.state = .on
+        }
+        submenu.addItem(customItem)
+        submenu.addItem(.separator())
+        let fadeItem = item(NSLocalizedString("Fade Out Before Pausing", comment: ""), #selector(toggleSleepTimerFade))
+        fadeItem.state = AppSettings.shared.sleepTimerFadeOut ? .on : .off
+        submenu.addItem(fadeItem)
         timerItem.submenu = submenu
         return timerItem
+    }
+
+    @objc private func toggleSleepTimerFade() {
+        AppSettings.shared.sleepTimerFadeOut.toggle()
+    }
+
+    @objc private func setCustomSleepTimer() {
+        let alert = NSAlert()
+        alert.messageText = NSLocalizedString("Pause after how many minutes?", comment: "")
+        alert.addButton(withTitle: NSLocalizedString("Start", comment: ""))
+        alert.addButton(withTitle: NSLocalizedString("Cancel", comment: ""))
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 120, height: 24))
+        field.placeholderString = "45"
+        if case let .minutes(minutes) = sleepTimer.mode { field.stringValue = String(minutes) }
+        alert.accessoryView = field
+        alert.window.initialFirstResponder = field
+        NSApp.activate()
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        guard let minutes = SleepTimer.customMinutes(from: field.stringValue) else {
+            NSSound.beep()
+            return
+        }
+        sleepTimer.set(.minutes(minutes))
     }
 
     /// Menu items carry the mode as a tag: minutes, 0 for off, -1 for the

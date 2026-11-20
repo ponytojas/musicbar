@@ -46,12 +46,12 @@ final class StatusItemController: NSObject {
         self?.loadPopupDetails(includePlaylists: true)
     }
     lazy var sleepTimer: SleepTimer = SleepTimer(
-        onFire: { [weak self] in self?.music.pause() },
-        onChange: { [weak self] in
-            guard let self else { return }
-            self.model.sleepTimerActive = self.sleepTimer.isActive
-        }
+        onFire: { [weak self] in self?.sleepTimerFired() },
+        onChange: { [weak self] in self?.sleepTimerChanged() },
+        onFade: { [weak self] fraction in self?.sleepTimerFade(to: fraction) }
     )
+    /// The player's volume before the sleep timer began fading it.
+    private var volumeBeforeSleepFade: Int?
 
     lazy var hotKeys = GlobalHotKeys { [weak self] action in self?.handleHotKey(action) }
 
@@ -334,6 +334,33 @@ final class StatusItemController: NSObject {
             self.music.clearPermissionFailures()
             // Catch up on anything missed while refreshes were paused.
             await self.refresh()
+        }
+    }
+
+    // MARK: - Sleep timer
+
+    private func sleepTimerFade(to fraction: Double) {
+        guard AppSettings.shared.sleepTimerFadeOut, model.isPlaying else { return }
+        Task {
+            if volumeBeforeSleepFade == nil { volumeBeforeSleepFade = await music.fetchVolume() }
+            // Cancelled meanwhile: the volume was (or is being) restored.
+            guard sleepTimer.isActive, let base = volumeBeforeSleepFade else { return }
+            await music.setVolume(SleepTimer.fadedVolume(base: base, fraction: fraction))
+        }
+    }
+
+    private func sleepTimerFired() {
+        let volume = volumeBeforeSleepFade
+        volumeBeforeSleepFade = nil
+        Task { await music.pause(restoringVolume: volume) }
+    }
+
+    private func sleepTimerChanged() {
+        model.sleepTimerActive = sleepTimer.isActive
+        // Turned off mid-fade: give the volume back.
+        if !sleepTimer.isActive, let volume = volumeBeforeSleepFade {
+            volumeBeforeSleepFade = nil
+            Task { await music.setVolume(volume) }
         }
     }
 

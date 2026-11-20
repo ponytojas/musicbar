@@ -549,6 +549,31 @@ final class MusicBarTests: XCTestCase {
         XCTAssertFalse(SleepTimer(defaults: defaults, onFire: {}, onChange: {}).isActive)
     }
 
+    func testSleepTimerFadeLowersVolumeTowardZero() {
+        XCTAssertEqual(SleepTimer.fadeFraction(remaining: SleepTimer.fadeDuration), 1)
+        XCTAssertEqual(SleepTimer.fadeFraction(remaining: SleepTimer.fadeDuration / 2), 0.5, accuracy: 0.0001)
+        XCTAssertEqual(SleepTimer.fadeFraction(remaining: 0), 0)
+        XCTAssertEqual(SleepTimer.fadeFraction(remaining: 600), 1)
+        XCTAssertEqual(SleepTimer.fadeFraction(remaining: -5), 0)
+
+        XCTAssertEqual(SleepTimer.fadedVolume(base: 80, fraction: 0.5), 40)
+        XCTAssertEqual(SleepTimer.fadedVolume(base: 80, fraction: 0), 0)
+        XCTAssertEqual(SleepTimer.fadedVolume(base: 80, fraction: 1), 80)
+        // Never louder than where it started.
+        XCTAssertEqual(SleepTimer.fadedVolume(base: 80, fraction: 1.5), 80)
+    }
+
+    func testCustomSleepTimerMinutes() {
+        XCTAssertEqual(SleepTimer.customMinutes(from: "45"), 45)
+        XCTAssertEqual(SleepTimer.customMinutes(from: " 5 "), 5)
+        XCTAssertEqual(SleepTimer.customMinutes(from: "720"), 720)
+        XCTAssertNil(SleepTimer.customMinutes(from: "0"))
+        XCTAssertNil(SleepTimer.customMinutes(from: "721"))
+        XCTAssertNil(SleepTimer.customMinutes(from: "-10"))
+        XCTAssertNil(SleepTimer.customMinutes(from: "soon"))
+        XCTAssertNil(SleepTimer.customMinutes(from: ""))
+    }
+
     func testSleepTimerIgnoresADeadlineThatPassed() {
         let now = Date()
         XCTAssertNil(SleepTimer.pendingEnd(now.addingTimeInterval(-1), now: now))

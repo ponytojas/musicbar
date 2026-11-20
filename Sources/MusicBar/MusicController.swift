@@ -240,6 +240,16 @@ final class MusicController {
 
     func pause() { send("pause") }
 
+    /// Pauses and, in the same script, puts the volume back where a fade
+    /// found it: restoring first would blast the last second of the song.
+    func pause(restoringVolume volume: Int?) async {
+        let player = activePlayer
+        guard player.isRunning else { return }
+        let restore = volume.map { "\nset sound volume to \(min(100, max(0, $0)))" } ?? ""
+        let response = await scriptRunner.runCommand(Self.script(for: player, "pause" + restore))
+        recordPermissionFailure(response.errorNumber, for: player)
+    }
+
     func seek(to position: TimeInterval) { send("set player position to \(position)") }
 
     /// Relative seek; both players clamp the result to the song.

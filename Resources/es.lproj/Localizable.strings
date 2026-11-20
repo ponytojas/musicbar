@@ -231,3 +231,10 @@
 "Copy" = "Copiar";
 "Paste" = "Pegar";
 "Select All" = "Seleccionar todo";
+
+/* Sleep timer options */
+"Custom…" = "Personalizado…";
+"Fade Out Before Pausing" = "Bajar el volumen antes de pausar";
+"Pause after how many minutes?" = "¿Pausar tras cuántos minutos?";
+"Start" = "Empezar";
+"Cancel" = "Cancelar";
