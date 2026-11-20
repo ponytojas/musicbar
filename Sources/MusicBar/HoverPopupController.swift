@@ -493,24 +493,7 @@ struct HoverPopupView: View {
             .focusEffectDisabled()
         }
         .padding(16)
-        .background {
-            ZStack {
-                // Blurred cover tints the card with the album's own colors.
-                if let artwork = model.artwork {
-                    Image(nsImage: artwork)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .blur(radius: 40)
-                        .opacity(0.35)
-                }
-                Rectangle().fill(.regularMaterial)
-            }
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(.white.opacity(0.1), lineWidth: 0.5)
-        }
+        .modifier(CardBackground(artwork: model.artwork))
     }
 
     @ViewBuilder
@@ -526,6 +509,48 @@ struct HoverPopupView: View {
                     Image(systemName: "music.note")
                         .font(.system(size: 44, weight: .semibold))
                         .foregroundStyle(.secondary)
+                }
+        }
+    }
+}
+
+/// The card's surface: Liquid Glass on macOS 26, the frosted material on
+/// earlier systems. Either way the blurred cover tints it with the album's
+/// own colors.
+private struct CardBackground: ViewModifier {
+    let artwork: NSImage?
+
+    private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: 16, style: .continuous) }
+
+    @ViewBuilder
+    private func coverTint(opacity: Double) -> some View {
+        if let artwork {
+            Image(nsImage: artwork)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .blur(radius: 40)
+                .opacity(opacity)
+        }
+    }
+
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *) {
+            content
+                // Over the glass, and fainter: glass already carries color
+                // from whatever is behind the card.
+                .background { coverTint(opacity: 0.22).clipShape(shape) }
+                .glassEffect(.regular, in: shape)
+        } else {
+            content
+                .background {
+                    ZStack {
+                        coverTint(opacity: 0.35)
+                        Rectangle().fill(.regularMaterial)
+                    }
+                }
+                .clipShape(shape)
+                .overlay {
+                    shape.strokeBorder(.white.opacity(0.1), lineWidth: 0.5)
                 }
         }
     }
