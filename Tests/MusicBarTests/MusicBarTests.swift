@@ -670,6 +670,35 @@ final class MusicBarTests: XCTestCase {
         XCTAssertTrue(ListeningHistory(fileURL: file).plays.isEmpty)
     }
 
+    // MARK: - URL commands
+
+    func testURLCommands() throws {
+        func command(_ string: String) throws -> URLCommand? {
+            URLCommand(url: try XCTUnwrap(URL(string: string)))
+        }
+        XCTAssertEqual(try command("musicbar://playpause"), .playPause)
+        XCTAssertEqual(try command("MusicBar://NEXT"), .next)
+        XCTAssertEqual(try command("musicbar://previous"), .previous)
+        XCTAssertEqual(try command("musicbar://favorite"), .favorite)
+        XCTAssertEqual(try command("musicbar://card"), .toggleCard)
+        XCTAssertEqual(try command("musicbar://settings"), .settings)
+        XCTAssertEqual(try command("musicbar://volume?level=40"), .setVolume(40))
+        XCTAssertEqual(try command("musicbar://volume?by=-10"), .changeVolume(-10))
+        XCTAssertEqual(try command("musicbar://seek?by=30"), .seek(30))
+        XCTAssertEqual(try command("musicbar://sleep?minutes=45"), .sleep(minutes: 45))
+        XCTAssertEqual(try command("musicbar://sleep?minutes=0"), .sleep(minutes: 0))
+
+        // Out of range, malformed, or unknown: ignored rather than guessed.
+        XCTAssertNil(try command("musicbar://volume?level=400"))
+        XCTAssertNil(try command("musicbar://volume?level=loud"))
+        XCTAssertNil(try command("musicbar://volume"))
+        XCTAssertNil(try command("musicbar://sleep?minutes=100000"))
+        XCTAssertNil(try command("musicbar://seek"))
+        XCTAssertNil(try command("musicbar://quit"))
+        XCTAssertNil(try command("musicbar://"))
+        XCTAssertNil(try command("https://next"))
+    }
+
     // MARK: - Support
 
     func testDiagnosticsDescribeTheSetupNotTheListening() {

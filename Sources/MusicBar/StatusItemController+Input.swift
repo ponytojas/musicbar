@@ -30,6 +30,22 @@ extension StatusItemController {
         }
     }
 
+    /// A command that arrived as a `musicbar://` link.
+    func handle(_ command: URLCommand) {
+        switch command {
+        case .playPause: togglePlayback()
+        case .next: skip(forward: true)
+        case .previous: skip(forward: false)
+        case .favorite: toggleFavoriteReadingState()
+        case .toggleCard: handleHotKey(.toggleCard)
+        case .settings: openSettings()
+        case let .setVolume(level): setVolume(level)
+        case let .changeVolume(step): changeVolume(by: step)
+        case let .seek(seconds): seek(by: seconds)
+        case let .sleep(minutes): sleepTimer.set(minutes == 0 ? .off : .minutes(minutes))
+        }
+    }
+
     /// Jumps within the song. The scripts run in order, so an open card
     /// reads the position after the jump.
     func seek(by seconds: Int) {

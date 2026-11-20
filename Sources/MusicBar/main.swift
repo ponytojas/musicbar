@@ -8,6 +8,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusController = StatusItemController()
     }
 
+    /// `musicbar://` links; see `URLCommand`. Anything unrecognized is
+    /// ignored.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for command in urls.compactMap(URLCommand.init(url:)) {
+            statusController?.handle(command)
+        }
+    }
+
     /// Opening MusicBar while it is already running (Finder, Spotlight)
     /// shows its settings: the only way in while the item is hidden.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

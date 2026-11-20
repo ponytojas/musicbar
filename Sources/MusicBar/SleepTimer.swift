@@ -28,7 +28,7 @@ final class SleepTimer {
     /// How long before a timed pause the volume starts to drop.
     static let fadeDuration: TimeInterval = 30
     /// The longest countdown the custom option accepts: twelve hours.
-    static let maximumMinutes = 720
+    nonisolated static let maximumMinutes = 720
 
     /// `onFire` pauses playback; `onChange` runs whenever `isActive` may
     /// have changed; `onFade` is called every couple of seconds through
