@@ -5,7 +5,6 @@
 "Menu Bar" = "Barra de menús";
 "Show album artwork" = "Mostrar carátula del álbum";
 "Show equalizer" = "Mostrar ecualizador";
-"Show artist name" = "Mostrar nombre del artista";
 "Equalizer" = "Ecualizador";
 "Position" = "Posición";
 "Left of title" = "A la izquierda del título";
@@ -216,3 +215,19 @@
 "Open Settings" = "Abrir Ajustes";
 "Got It" = "Entendido";
 "Tips…" = "Consejos…";
+
+/* Text format */
+"Text" = "Texto";
+"Text size" = "Tamaño del texto";
+"Custom" = "Personalizado";
+"Template" = "Plantilla";
+"Use {title}, {artist} and {album}." = "Usa {title}, {artist} y {album}.";
+"Use {title}, {artist} and {album} in the template. Long titles scroll on their own while music plays, and whenever you hover the menu bar item." = "Usa {title}, {artist} y {album} en la plantilla. Los títulos largos se desplazan solos mientras suena la música, y siempre que pasas el cursor por el elemento de la barra de menús.";
+"Artist" = "Artista";
+"Album" = "Álbum";
+"Edit" = "Edición";
+"Undo" = "Deshacer";
+"Cut" = "Cortar";
+"Copy" = "Copiar";
+"Paste" = "Pegar";
+"Select All" = "Seleccionar todo";

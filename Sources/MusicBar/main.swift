@@ -36,6 +36,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appItem.submenu = appMenu
         mainMenu.addItem(appItem)
 
+        // For the text fields in Settings: without these items ⌘C, ⌘V and
+        // ⌘A do nothing there.
+        let editMenu = NSMenu(title: NSLocalizedString("Edit", comment: ""))
+        editMenu.addItem(withTitle: NSLocalizedString("Undo", comment: ""), action: Selector(("undo:")), keyEquivalent: "z")
+        editMenu.addItem(.separator())
+        editMenu.addItem(withTitle: NSLocalizedString("Cut", comment: ""), action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: NSLocalizedString("Copy", comment: ""), action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: NSLocalizedString("Paste", comment: ""), action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(
+            withTitle: NSLocalizedString("Select All", comment: ""),
+            action: #selector(NSText.selectAll(_:)),
+            keyEquivalent: "a"
+        )
+        let editItem = NSMenuItem()
+        editItem.submenu = editMenu
+        mainMenu.addItem(editItem)
+
         let windowMenu = NSMenu(title: NSLocalizedString("Window", comment: ""))
         windowMenu.addItem(
             withTitle: NSLocalizedString("Close", comment: ""),

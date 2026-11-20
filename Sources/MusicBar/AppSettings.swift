@@ -66,8 +66,16 @@ final class AppSettings: ObservableObject {
     @Published var showTitle: Bool = AppSettings.stored("showTitle", true) {
         didSet { Self.save(showTitle, "showTitle") }
     }
-    @Published var showArtist: Bool = AppSettings.stored("showArtist", true) {
-        didSet { Self.save(showArtist, "showArtist") }
+    /// Template for the menu bar text; see `TitleFormat`. Versions with a
+    /// plain "show artist" switch carry their choice over.
+    @Published var titleFormat: String = AppSettings.stored(
+        "titleFormat",
+        AppSettings.stored("showArtist", true) ? TitleFormat.titleAndArtist : TitleFormat.titleOnly
+    ) {
+        didSet { Self.save(titleFormat, "titleFormat") }
+    }
+    @Published var titleFontSize: Double = AppSettings.stored("titleFontSize", 12.0) {
+        didSet { Self.save(titleFontSize, "titleFontSize") }
     }
     /// Short titles take only the room they need instead of `textWidth`.
     @Published var fitTitleToContent: Bool = AppSettings.stored("fitTitleToContent", true) {

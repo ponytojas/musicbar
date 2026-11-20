@@ -9,7 +9,7 @@ struct StatusBarView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var displayText: String {
-        settings.showArtist ? model.displayText : model.title
+        TitleFormat.render(settings.titleFormat, title: model.title, artist: model.artist, album: model.album)
     }
 
     private var showsTrack: Bool { model.hasTrack && !model.isCollapsed }
@@ -65,7 +65,13 @@ struct StatusBarView: View {
                 }
 
                 if settings.showTitle {
-                    MarqueeText(text: displayText, maxWidth: settings.textWidth, model: model, settings: settings)
+                    MarqueeText(
+                        text: displayText,
+                        maxWidth: settings.textWidth,
+                        fontSize: settings.titleFontSize,
+                        model: model,
+                        settings: settings
+                    )
                         .id(displayText)
                         .transition(titleTransition)
                 }
@@ -96,6 +102,7 @@ struct StatusBarView: View {
         .animation(change, value: settings.showTitle)
         .animation(change, value: settings.fitTitleToContent)
         .animation(change, value: settings.textWidth)
+        .animation(change, value: settings.titleFontSize)
         .animation(change, value: settings.equalizerPosition)
     }
 
@@ -392,6 +399,7 @@ extension NSColor {
 struct MarqueeText: View {
     let text: String
     let maxWidth: CGFloat
+    var fontSize: CGFloat = 12
     @ObservedObject var model: TrackModel
     @ObservedObject var settings: AppSettings
 
@@ -400,12 +408,14 @@ struct MarqueeText: View {
 
     private let scrollSpeed: CGFloat = 30 // points per second
 
-    private static let font = NSFont.systemFont(ofSize: 12, weight: .medium)
+    private static func font(size: CGFloat) -> NSFont {
+        NSFont.systemFont(ofSize: size, weight: .medium)
+    }
 
     /// Measured from the string instead of read back from layout, so the
     /// item has its final width on the first frame of a new title.
-    static func width(of text: String) -> CGFloat {
-        ceil((text as NSString).size(withAttributes: [.font: font]).width)
+    static func width(of text: String, fontSize: CGFloat = 12) -> CGFloat {
+        ceil((text as NSString).size(withAttributes: [.font: font(size: fontSize)]).width)
     }
 
     /// Short titles give the room back to the menu bar when `fit` is on.
@@ -413,13 +423,13 @@ struct MarqueeText: View {
         fit ? min(textWidth, maxWidth) : maxWidth
     }
 
-    private var fullTextWidth: CGFloat { Self.width(of: text) }
+    private var fullTextWidth: CGFloat { Self.width(of: text, fontSize: fontSize) }
 
     private var needsScroll: Bool { fullTextWidth > maxWidth }
 
     var body: some View {
         Text(text)
-            .font(Font(Self.font))
+            .font(Font(Self.font(size: fontSize)))
             .lineLimit(1)
             .fixedSize(horizontal: true, vertical: false)
             .offset(x: offset)

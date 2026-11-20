@@ -415,6 +415,38 @@ final class MusicBarTests: XCTestCase {
         XCTAssertFalse(StatusItemController.shouldShowItem(hideWhenNoPlayer: true, anyPlayerRunning: false))
     }
 
+    func testTitleFormatFillsPlaceholdersAndDropsDanglingSeparators() {
+        func render(_ template: String, artist: String = "Artist", album: String = "Album") -> String {
+            TitleFormat.render(template, title: "Song", artist: artist, album: album)
+        }
+        XCTAssertEqual(render("{title} — {artist}"), "Song — Artist")
+        XCTAssertEqual(render("{artist} — {title}"), "Artist — Song")
+        XCTAssertEqual(render("{title} — {artist} — {album}"), "Song — Artist — Album")
+        XCTAssertEqual(render("♪ {title} by {artist}"), "♪ Song by Artist")
+
+        // A missing value takes its separator with it, wherever it sits.
+        XCTAssertEqual(render("{title} — {artist}", artist: ""), "Song")
+        XCTAssertEqual(render("{artist} — {title}", artist: ""), "Song")
+        XCTAssertEqual(render("{title} — {artist} — {album}", artist: ""), "Song — Album")
+        XCTAssertEqual(render("{title} — {artist} — {album}", artist: "", album: ""), "Song")
+
+        // Never blank: with nothing to show, the title stands in.
+        XCTAssertEqual(render("{album}", album: ""), "Song")
+        XCTAssertEqual(render(""), "Song")
+        XCTAssertEqual(render("no placeholders"), "no placeholders")
+        // A value is never re-read as a template.
+        XCTAssertEqual(TitleFormat.render("{title}", title: "{artist}", artist: "X", album: ""), "{artist}")
+        XCTAssertTrue(TitleFormat.presets.contains(TitleFormat.titleAndArtist))
+    }
+
+    func testLargerTextIsWider() {
+        XCTAssertGreaterThan(
+            MarqueeText.width(of: "Some title", fontSize: 14),
+            MarqueeText.width(of: "Some title", fontSize: 10)
+        )
+        XCTAssertEqual(MarqueeText.width(of: "Some title"), MarqueeText.width(of: "Some title", fontSize: 12))
+    }
+
     func testSeekFractionClampsToTheBar() {
         XCTAssertEqual(HoverPopupView.seekFraction(x: 42, width: 168), 0.25, accuracy: 0.0001)
         XCTAssertEqual(HoverPopupView.seekFraction(x: -20, width: 168), 0)

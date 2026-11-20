@@ -167,14 +167,42 @@ struct GeneralSettings: View {
 
 struct MenuBarSettings: View {
     @ObservedObject var settings: AppSettings
+    /// The template field is open, even if what's typed matches a preset.
+    @State private var editsCustomFormat = false
+
+    private static let customFormat = "custom"
+
+    /// The picker's selection: a preset's template, or "custom".
+    private var formatSelection: Binding<String> {
+        Binding(
+            get: {
+                editsCustomFormat || !TitleFormat.presets.contains(settings.titleFormat)
+                    ? Self.customFormat
+                    : settings.titleFormat
+            },
+            set: { selection in
+                editsCustomFormat = selection == Self.customFormat
+                if selection != Self.customFormat { settings.titleFormat = selection }
+            }
+        )
+    }
+
+    /// A preset as the menu shows it: its template filled with the words
+    /// themselves.
+    private func presetName(_ template: String) -> String {
+        TitleFormat.render(
+            template,
+            title: NSLocalizedString("Title", comment: ""),
+            artist: NSLocalizedString("Artist", comment: ""),
+            album: NSLocalizedString("Album", comment: "")
+        )
+    }
 
     var body: some View {
         Form {
             Section {
                 Toggle("Show album artwork", isOn: $settings.showArtwork)
                 Toggle("Show title", isOn: $settings.showTitle)
-                Toggle("Show artist name", isOn: $settings.showArtist)
-                    .disabled(!settings.showTitle)
                 Toggle("Hide when no player is open", isOn: $settings.hideWhenNoPlayer)
             } header: {
                 Text("Show")
@@ -185,6 +213,22 @@ struct MenuBarSettings: View {
             }
 
             Section {
+                Picker("Text", selection: formatSelection) {
+                    ForEach(TitleFormat.presets, id: \.self) { template in
+                        Text(verbatim: presetName(template)).tag(template)
+                    }
+                    Divider()
+                    Text("Custom").tag(Self.customFormat)
+                }
+                if formatSelection.wrappedValue == Self.customFormat {
+                    TextField("Template", text: $settings.titleFormat)
+                        .help(Text("Use {title}, {artist} and {album}."))
+                }
+                Picker("Text size", selection: $settings.titleFontSize) {
+                    ForEach([10.0, 11, 12, 13, 14], id: \.self) { size in
+                        Text("\(Int(size)) pt").tag(size)
+                    }
+                }
                 Toggle("Shrink to fit short titles", isOn: $settings.fitTitleToContent)
                 LabeledContent("Maximum title width") {
                     VStack(alignment: .trailing, spacing: 2) {
@@ -211,7 +255,11 @@ struct MenuBarSettings: View {
             } header: {
                 Text("Title")
             } footer: {
-                Footnote("Long titles scroll on their own while music plays, and whenever you hover the menu bar item.")
+                if formatSelection.wrappedValue == Self.customFormat {
+                    Footnote("Use {title}, {artist} and {album} in the template. Long titles scroll on their own while music plays, and whenever you hover the menu bar item.")
+                } else {
+                    Footnote("Long titles scroll on their own while music plays, and whenever you hover the menu bar item.")
+                }
             }
             .disabled(!settings.showTitle)
 

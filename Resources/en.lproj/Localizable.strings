@@ -5,7 +5,6 @@
 "Menu Bar" = "Menu Bar";
 "Show album artwork" = "Show album artwork";
 "Show equalizer" = "Show equalizer";
-"Show artist name" = "Show artist name";
 "Equalizer" = "Equalizer";
 "Position" = "Position";
 "Left of title" = "Left of title";
@@ -216,3 +215,19 @@
 "Open Settings" = "Open Settings";
 "Got It" = "Got It";
 "Tips…" = "Tips…";
+
+/* Text format */
+"Text" = "Text";
+"Text size" = "Text size";
+"Custom" = "Custom";
+"Template" = "Template";
+"Use {title}, {artist} and {album}." = "Use {title}, {artist} and {album}.";
+"Use {title}, {artist} and {album} in the template. Long titles scroll on their own while music plays, and whenever you hover the menu bar item." = "Use {title}, {artist} and {album} in the template. Long titles scroll on their own while music plays, and whenever you hover the menu bar item.";
+"Artist" = "Artist";
+"Album" = "Album";
+"Edit" = "Edit";
+"Undo" = "Undo";
+"Cut" = "Cut";
+"Copy" = "Copy";
+"Paste" = "Paste";
+"Select All" = "Select All";
