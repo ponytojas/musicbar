@@ -238,3 +238,7 @@
 "Pause after how many minutes?" = "Pause after how many minutes?";
 "Start" = "Start";
 "Cancel" = "Cancel";
+
+/* Play a playlist */
+"Play Playlist" = "Play Playlist";
+"Couldn't play %@" = "Couldn't play %@";

@@ -19,6 +19,9 @@ extension StatusItemController {
         if model.hasTrack, music.activePlayer == .spotify {
             menu.addItem(item(NSLocalizedString("Copy Song Link", comment: ""), #selector(copySongLink)))
         }
+        if let playlistItem = playlistsMenuItem() {
+            menu.addItem(playlistItem)
+        }
         if let recentItem = recentTracksMenuItem() {
             menu.addItem(recentItem)
         }
@@ -64,6 +67,35 @@ extension StatusItemController {
             added = true
         }
         if added { menu.addItem(.separator()) }
+    }
+
+    /// Music's playlists, to start one without opening Music. Spotify's
+    /// scripting can't list playlists.
+    private func playlistsMenuItem() -> NSMenuItem? {
+        guard music.activePlayer == .appleMusic, PlayerApp.appleMusic.isRunning, !model.playlists.isEmpty else {
+            return nil
+        }
+        let playlistItem = NSMenuItem(title: NSLocalizedString("Play Playlist", comment: ""), action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+        for playlist in model.playlists {
+            let option = item(playlist.name, #selector(playPlaylist(_:)))
+            option.representedObject = playlist
+            submenu.addItem(option)
+        }
+        playlistItem.submenu = submenu
+        return playlistItem
+    }
+
+    @objc private func playPlaylist(_ sender: NSMenuItem) {
+        guard let playlist = sender.representedObject as? Playlist else { return }
+        Task {
+            if await music.play(playlist) {
+                refreshSoon()
+            } else {
+                showPopupNotice(String(format: NSLocalizedString("Couldn't play %@", comment: ""), playlist.name))
+                hoverPopup.present(relativeTo: statusItem.button)
+            }
+        }
     }
 
     private func recentTracksMenuItem() -> NSMenuItem? {

@@ -620,6 +620,19 @@ final class MusicController {
         return response.errorNumber == nil
     }
 
+    /// Starts one of Music's playlists from its first song (or a shuffled
+    /// one, if shuffle is on).
+    func play(_ playlist: Playlist) async -> Bool {
+        guard PlayerApp.appleMusic.isRunning, Self.isPersistentID(playlist.id) else { return false }
+        let source = Self.script(
+            for: .appleMusic,
+            "play (first user playlist whose persistent ID is \"\(playlist.id)\")"
+        )
+        let response = await scriptRunner.runCommand(source)
+        recordPermissionFailure(response.errorNumber, for: .appleMusic)
+        return response.errorNumber == nil
+    }
+
     func openPlayerApp() {
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: activePlayer.rawValue) else { return }
         NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())

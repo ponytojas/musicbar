@@ -84,6 +84,7 @@ final class StatusItemController: NSObject {
     private(set) var captureFailed = false
     /// A newer release found by an update check.
     var availableUpdate: String?
+    private var didPreloadPlaylists = false
     private var isRefreshing = false
     private var refreshRequested = false
     /// Bumped by every player notification. A refresh that was reading the
@@ -457,6 +458,19 @@ final class StatusItemController: NSObject {
         updateWaveformCapture()
         trackDidUpdate()
         updateAccessibility()
+        preloadPlaylistsIfNeeded()
+    }
+
+    /// The menu is built on the spot and can't wait for a script, so the
+    /// playlists it offers are read once ahead of time. Opening the card
+    /// refreshes them.
+    private func preloadPlaylistsIfNeeded() {
+        guard music.activePlayer == .appleMusic, !didPreloadPlaylists else { return }
+        didPreloadPlaylists = true
+        Task {
+            let playlists = await music.fetchPlaylists()
+            if music.activePlayer == .appleMusic, model.playlists.isEmpty { model.playlists = playlists }
+        }
     }
 
     /// Runs after every state update: notices a new song, or gives a song

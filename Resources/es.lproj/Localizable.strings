@@ -238,3 +238,7 @@
 "Pause after how many minutes?" = "¿Pausar tras cuántos minutos?";
 "Start" = "Empezar";
 "Cancel" = "Cancelar";
+
+/* Play a playlist */
+"Play Playlist" = "Reproducir playlist";
+"Couldn't play %@" = "No se pudo reproducir %@";
