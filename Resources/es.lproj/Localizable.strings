@@ -252,3 +252,6 @@
 "Rating removed" = "Valoración eliminada";
 "Marked as disliked" = "Marcada como «no me gusta»";
 "No longer disliked" = "Ya no está marcada como «no me gusta»";
+
+/* Song link */
+"Couldn't find a link for this song" = "No se encontró un enlace para esta canción";

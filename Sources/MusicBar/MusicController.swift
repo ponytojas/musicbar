@@ -838,7 +838,8 @@ final class MusicController {
         return Artwork(thumbnail: thumbnail, encodedData: data)
     }
 
-    private func fetchArtworkFromITunesSearch(title: String, artist: String) async -> Data? {
+    /// Songs Apple's iTunes Search returns for a title and artist.
+    private func searchITunes(title: String, artist: String) async -> [[String: Any]] {
         var components = URLComponents(string: "https://itunes.apple.com/search")!
         components.queryItems = [
             URLQueryItem(name: "term", value: "\(artist) \(title)"),
@@ -852,8 +853,32 @@ final class MusicController {
                   maximumBytes: ArtworkDownloader.maximumSearchResponseBytes
               ),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let results = json["results"] as? [[String: Any]],
-              let match = Self.searchResult(in: results, matchingArtist: artist),
+              let results = json["results"] as? [[String: Any]]
+        else { return [] }
+        return results
+    }
+
+    /// Web link to a song on Apple Music. Music's scripting has no link for
+    /// the current track, so the song is looked up by title and artist;
+    /// nil when the search has no confident match.
+    func appleMusicTrackLink(title: String, artist: String) async -> URL? {
+        let results = await searchITunes(title: title, artist: artist)
+        guard let match = Self.searchResult(in: results, matchingArtist: artist, title: title),
+              let link = match["trackViewUrl"] as? String
+        else { return nil }
+        return Self.appleMusicWebURL(from: link)
+    }
+
+    /// Only an https link to music.apple.com is worth putting on the
+    /// clipboard.
+    static func appleMusicWebURL(from link: String) -> URL? {
+        guard let url = URL(string: link), url.scheme == "https", url.host == "music.apple.com" else { return nil }
+        return url
+    }
+
+    private func fetchArtworkFromITunesSearch(title: String, artist: String) async -> Data? {
+        let results = await searchITunes(title: title, artist: artist)
+        guard let match = Self.searchResult(in: results, matchingArtist: artist),
               let artworkURLString = match["artworkUrl100"] as? String,
               let artworkURL = URL(string: artworkURLString.replacingOccurrences(of: "100x100", with: "600x600")),
               ArtworkDownloader.isTrustedArtworkURL(artworkURL)
@@ -867,12 +892,33 @@ final class MusicController {
 
     /// First result by the same artist; either name may carry extra credits
     /// ("A & B", "A feat. C"), so containment in either direction counts.
-    static func searchResult(in results: [[String: Any]], matchingArtist artist: String) -> [String: Any]? {
-        guard !artist.isEmpty else { return results.first }
-        return results.first { result in
+    /// With a `title`, the song has to match as well: a cover can come from
+    /// a sibling track, a link has to be the song itself. An exact name
+    /// wins over a version of it ("Song (Remastered)").
+    static func searchResult(
+        in results: [[String: Any]],
+        matchingArtist artist: String,
+        title: String? = nil
+    ) -> [String: Any]? {
+        let byArtist = results.filter { result in
+            guard !artist.isEmpty else { return true }
             guard let name = result["artistName"] as? String else { return false }
             return name.localizedCaseInsensitiveContains(artist) || artist.localizedCaseInsensitiveContains(name)
         }
+        guard let title else { return byArtist.first }
+        func name(_ result: [String: Any]) -> String { (result["trackName"] as? String) ?? "" }
+        return byArtist.first { name($0).caseInsensitiveCompare(title) == .orderedSame }
+            ?? byArtist.first { isVersion(name($0), of: title) || isVersion(title, of: name($0)) }
+    }
+
+    /// "Song (Live)" and "Song - Single" are versions of "Song";
+    /// "Songbird" and "Another Song" are not.
+    static func isVersion(_ name: String, of title: String) -> Bool {
+        let name = name.lowercased()
+        let title = title.lowercased()
+        guard !title.isEmpty, name.hasPrefix(title), name.count > title.count else { return false }
+        let next = name[name.index(name.startIndex, offsetBy: title.count)]
+        return !next.isLetter && !next.isNumber
     }
 
     private func fetchAppleMusicArtworkData() async -> Data? {

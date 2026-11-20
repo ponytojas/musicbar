@@ -20,7 +20,7 @@ extension StatusItemController {
             menu.addItem(dislikeItem)
             menu.addItem(item(NSLocalizedString("Show in Music", comment: ""), #selector(showInMusic)))
         }
-        if model.hasTrack, music.activePlayer == .spotify {
+        if model.hasTrack {
             menu.addItem(item(NSLocalizedString("Copy Song Link", comment: ""), #selector(copySongLink)))
         }
         if let playlistItem = playlistsMenuItem() {
@@ -249,10 +249,18 @@ extension StatusItemController {
 
     @objc private func copySongLink() {
         Task {
-            guard let url = await music.spotifyTrackLink() else { return }
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(url.absoluteString, forType: .string)
-            showPopupNotice(NSLocalizedString("Link copied", comment: ""))
+            // Spotify hands over its own link; for Apple Music the song is
+            // looked up in Apple's catalog, which needs the network.
+            let url = music.activePlayer == .spotify
+                ? await music.spotifyTrackLink()
+                : await music.appleMusicTrackLink(title: model.title, artist: model.artist)
+            if let url {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(url.absoluteString, forType: .string)
+                showPopupNotice(NSLocalizedString("Link copied", comment: ""))
+            } else {
+                showPopupNotice(NSLocalizedString("Couldn't find a link for this song", comment: ""))
+            }
             hoverPopup.present(relativeTo: statusItem.button)
         }
     }

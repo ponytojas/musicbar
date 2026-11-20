@@ -95,6 +95,42 @@ final class MusicBarTests: XCTestCase {
         XCTAssertNil(MusicController.spotifyWebURL(fromURI: ""))
     }
 
+    func testSongLinkNeedsTheSongItselfNotJustTheArtist() {
+        let results: [[String: Any]] = [
+            ["artistName": "The Artist", "trackName": "Another Song", "trackViewUrl": "https://music.apple.com/a"],
+            ["artistName": "The Artist", "trackName": "Song (Remastered)", "trackViewUrl": "https://music.apple.com/b"],
+        ]
+        // For a cover, the artist is enough; for a link it isn't.
+        XCTAssertEqual(
+            MusicController.searchResult(in: results, matchingArtist: "The Artist")?["trackViewUrl"] as? String,
+            "https://music.apple.com/a"
+        )
+        XCTAssertEqual(
+            MusicController.searchResult(in: results, matchingArtist: "The Artist", title: "Song")?["trackViewUrl"] as? String,
+            "https://music.apple.com/b"
+        )
+        XCTAssertNil(MusicController.searchResult(in: results, matchingArtist: "The Artist", title: "Missing"))
+        XCTAssertNil(MusicController.searchResult(in: [], matchingArtist: "", title: "Song"))
+
+        // An exact name beats a version of it, whatever the order.
+        let exactLater = results + [["artistName": "The Artist", "trackName": "song", "trackViewUrl": "https://music.apple.com/c"]]
+        XCTAssertEqual(
+            MusicController.searchResult(in: exactLater, matchingArtist: "The Artist", title: "Song")?["trackViewUrl"] as? String,
+            "https://music.apple.com/c"
+        )
+        XCTAssertTrue(MusicController.isVersion("Song (Live)", of: "song"))
+        XCTAssertTrue(MusicController.isVersion("Song - Single", of: "Song"))
+        XCTAssertFalse(MusicController.isVersion("Songbird", of: "Song"))
+        XCTAssertFalse(MusicController.isVersion("Another Song", of: "Song"))
+        XCTAssertFalse(MusicController.isVersion("Song", of: "Song"))
+        XCTAssertFalse(MusicController.isVersion("Song", of: ""))
+
+        XCTAssertNotNil(MusicController.appleMusicWebURL(from: "https://music.apple.com/us/album/x/1?i=2&uo=4"))
+        XCTAssertNil(MusicController.appleMusicWebURL(from: "http://music.apple.com/us/album/x/1"))
+        XCTAssertNil(MusicController.appleMusicWebURL(from: "https://example.com/us/album/x/1"))
+        XCTAssertNil(MusicController.appleMusicWebURL(from: "itmss://music.apple.com/us/album/x/1"))
+    }
+
     func testPlaylistParsingRejectsNonHexIDs() {
         let playlists = MusicController.parsePlaylists("0A1B2C\tRoad Trip\nnot-hex\tBad\n3D4E\tTabs\tInside\n")
         XCTAssertEqual(playlists, [

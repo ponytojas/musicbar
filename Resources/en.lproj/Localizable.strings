@@ -252,3 +252,6 @@
 "Rating removed" = "Rating removed";
 "Marked as disliked" = "Marked as disliked";
 "No longer disliked" = "No longer disliked";
+
+/* Song link */
+"Couldn't find a link for this song" = "Couldn't find a link for this song";
