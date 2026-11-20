@@ -417,6 +417,11 @@ final class HoverPopupController {
         panel.level = .statusBar
         panel.isOpaque = false
         panel.backgroundColor = .clear
+        // The window's own shadow follows the window, which is a
+        // rectangle: around the glass card of macOS 26 it shows as a
+        // square outline poking out past the rounded corners. Glass has
+        // its own edge, so it goes without; the opaque-material card of
+        // earlier systems gives the shadow a rounded shape to follow.
         panel.hasShadow = true
         panel.hidesOnDeactivate = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
@@ -505,9 +510,11 @@ struct HoverPopupView: View {
                 UtilityRow(model: model, actions: actions)
             }
             .frame(width: coverSize)
-            // Pointer-only card: a clicked button shouldn't keep a focus ring.
-            .focusEffectDisabled()
         }
+        // No focus rings: a clicked button shouldn't keep one, and a card
+        // opened from the keyboard is driven by its own keys, not by
+        // tabbing between controls.
+        .focusEffectDisabled()
         .padding(16)
         .modifier(CardBackground(artwork: model.artwork))
     }
@@ -535,6 +542,7 @@ struct HoverPopupView: View {
 /// own colors.
 private struct CardBackground: ViewModifier {
     let artwork: NSImage?
+    @Environment(\.controlActiveState) private var activeState
 
     private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: 16, style: .continuous) }
 
@@ -552,10 +560,27 @@ private struct CardBackground: ViewModifier {
     func body(content: Content) -> some View {
         if #available(macOS 26.0, *) {
             content
-                // Over the glass, and fainter: glass already carries color
-                // from whatever is behind the card.
-                .background { coverTint(opacity: 0.22).clipShape(shape) }
+                .background {
+                    ZStack {
+                        // Glass is frosted while the card is just hovered,
+                        // but turns clear once the card has the keyboard:
+                        // text behind it then shows through the title. A
+                        // veil keeps it readable in that state.
+                        if activeState == .key {
+                            Rectangle().fill(.background.opacity(0.5))
+                        }
+                        // Over the glass, and fainter: glass already carries
+                        // color from whatever is behind the card.
+                        coverTint(opacity: 0.22)
+                    }
+                    .clipShape(shape)
+                }
                 .glassEffect(.regular, in: shape)
+                // In a window that isn't key, glass paints its frosted
+                // fallback over the view's whole rectangle, corners
+                // included. Clipping keeps it to the card's shape, and
+                // gives the window shadow a rounded edge to follow.
+                .clipShape(shape)
         } else {
             content
                 .background {
