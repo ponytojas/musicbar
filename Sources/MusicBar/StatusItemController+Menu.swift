@@ -218,7 +218,7 @@ extension StatusItemController {
         }
     }
 
-    @objc private func openSettings() {
+    @objc func openSettings() {
         settingsWindow.show()
     }
 

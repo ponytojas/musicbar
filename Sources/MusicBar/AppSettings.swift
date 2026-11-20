@@ -73,6 +73,10 @@ final class AppSettings: ObservableObject {
     @Published var fitTitleToContent: Bool = AppSettings.stored("fitTitleToContent", true) {
         didSet { Self.save(fitTitleToContent, "fitTitleToContent") }
     }
+    /// Removes the item from the menu bar while no allowed player is open.
+    @Published var hideWhenNoPlayer: Bool = AppSettings.stored("hideWhenNoPlayer", false) {
+        didSet { Self.save(hideWhenNoPlayer, "hideWhenNoPlayer") }
+    }
     /// 0 keeps the title visible while paused.
     @Published var collapseAfterPauseMinutes: Int = AppSettings.stored("collapseAfterPauseMinutes", 0) {
         didSet { Self.save(collapseAfterPauseMinutes, "collapseAfterPauseMinutes") }

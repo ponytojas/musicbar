@@ -8,6 +8,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusController = StatusItemController()
     }
 
+    /// Opening MusicBar while it is already running (Finder, Spotlight)
+    /// shows its settings: the only way in while the item is hidden.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        statusController?.openSettings()
+        return false
+    }
+
     /// Never drawn — the app has no Dock icon or menu bar of its own — but
     /// it is what makes ⌘W and ⌘Q work while the settings window is in front.
     private static func makeMainMenu() -> NSMenu {

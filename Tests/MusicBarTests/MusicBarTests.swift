@@ -409,6 +409,12 @@ final class MusicBarTests: XCTestCase {
         XCTAssertEqual(MarqueeText.width(of: ""), 0)
     }
 
+    func testItemHidesOnlyWhenAskedAndNoPlayerIsOpen() {
+        XCTAssertTrue(StatusItemController.shouldShowItem(hideWhenNoPlayer: false, anyPlayerRunning: false))
+        XCTAssertTrue(StatusItemController.shouldShowItem(hideWhenNoPlayer: true, anyPlayerRunning: true))
+        XCTAssertFalse(StatusItemController.shouldShowItem(hideWhenNoPlayer: true, anyPlayerRunning: false))
+    }
+
     func testSeekFractionClampsToTheBar() {
         XCTAssertEqual(HoverPopupView.seekFraction(x: 42, width: 168), 0.25, accuracy: 0.0001)
         XCTAssertEqual(HoverPopupView.seekFraction(x: -20, width: 168), 0)

@@ -170,11 +170,18 @@ struct MenuBarSettings: View {
 
     var body: some View {
         Form {
-            Section("Show") {
+            Section {
                 Toggle("Show album artwork", isOn: $settings.showArtwork)
                 Toggle("Show title", isOn: $settings.showTitle)
                 Toggle("Show artist name", isOn: $settings.showArtist)
                     .disabled(!settings.showTitle)
+                Toggle("Hide when no player is open", isOn: $settings.hideWhenNoPlayer)
+            } header: {
+                Text("Show")
+            } footer: {
+                if settings.hideWhenNoPlayer {
+                    Footnote("While it's hidden, open MusicBar again from Finder or Spotlight to get back to these settings.")
+                }
             }
 
             Section {

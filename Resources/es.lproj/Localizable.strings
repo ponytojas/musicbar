@@ -198,3 +198,7 @@
 "Volume down" = "Bajar volumen";
 "Skip forward 10 seconds" = "Avanzar 10 segundos";
 "Skip back 10 seconds" = "Retroceder 10 segundos";
+
+/* Hide without a player */
+"Hide when no player is open" = "Ocultar si no hay ningún reproductor abierto";
+"While it's hidden, open MusicBar again from Finder or Spotlight to get back to these settings." = "Mientras esté oculto, vuelve a abrir MusicBar desde el Finder o Spotlight para llegar a estos ajustes.";

@@ -220,6 +220,7 @@ final class StatusItemController: NSObject {
 
                 Task { @MainActor in
                     guard let self else { return }
+                    self.updateItemVisibility()
                     self.music.clearPermissionFailures(for: player)
                     if name == NSWorkspace.didLaunchApplicationNotification {
                         await AutomationPermission.prepare(for: [player])
@@ -277,6 +278,12 @@ final class StatusItemController: NSObject {
                 Task { @MainActor [weak self] in await self?.refresh() }
             }
             .store(in: &settingsCancellables)
+        settings.$hideWhenNoPlayer
+            .combineLatest(settings.$playerMode)
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in self?.updateItemVisibility() }
+            }
+            .store(in: &settingsCancellables)
         settings.$showHoverCard
             .dropFirst()
             .sink { [weak self] _ in
@@ -325,6 +332,20 @@ final class StatusItemController: NSObject {
             // Catch up on anything missed while refreshes were paused.
             await self.refresh()
         }
+    }
+
+    /// With "hide when no player is open" on, the item leaves the menu bar
+    /// until Music or Spotify is launched.
+    private func updateItemVisibility() {
+        let visible = Self.shouldShowItem(
+            hideWhenNoPlayer: AppSettings.shared.hideWhenNoPlayer,
+            anyPlayerRunning: AppSettings.shared.playerMode.players.contains(where: \.isRunning)
+        )
+        if statusItem.isVisible != visible { statusItem.isVisible = visible }
+    }
+
+    static func shouldShowItem(hideWhenNoPlayer: Bool, anyPlayerRunning: Bool) -> Bool {
+        !hideWhenNoPlayer || anyPlayerRunning
     }
 
     // MARK: - State
