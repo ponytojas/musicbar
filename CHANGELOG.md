@@ -30,6 +30,20 @@
 - Spanish and English text for the system permission prompts.
 - `./build.sh --universal`, `--debug`, and `--run`; a release workflow that publishes tagged builds.
 - The layered app icon (Liquid Glass on macOS 26) is compiled into the app.
+- A welcome window on first launch, also available as Tips in the menu.
+- Menu bar text template (`{title}`, `{artist}`, `{album}`) and text size.
+- Optional playback progress in the menu bar item: a hairline or the time remaining.
+- Option to hide the item while no player is open; opening MusicBar again shows its settings.
+- Equalizer sensitivity.
+- Shortcuts for volume up and down and for skipping 10 seconds.
+- Sleep timer: fade-out over the last 30 seconds, and a custom number of minutes.
+- Apple Music: star rating and dislike, Play Playlist, and Copy Song Link.
+- Listening history with top songs and artists (Settings → History).
+- The card can be pinned open as a draggable mini player.
+- The card is Liquid Glass on macOS 26.
+- Covers are kept on disk between launches.
+- `musicbar://` links to control MusicBar from other tools.
+- Reset All Settings and Copy Diagnostics.
 
 ### Fixed
 
