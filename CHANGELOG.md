@@ -8,7 +8,7 @@
 - The title takes only the room it needs, up to the chosen maximum width, instead of always filling it. Turn "Shrink to fit short titles" off for the previous fixed width.
 - The equalizer shows frequency bands (bass on the left) by default. The previous loudness display is still available as a style.
 - A paused or idle player no longer takes the menu bar away from the one that is playing.
-- The settings window is organized into General, Menu Bar, Equalizer, and Shortcuts tabs.
+- The settings window is laid out like System Settings: General, Menu Bar, Equalizer, Shortcuts, and History in a sidebar.
 - Long titles scroll on their own only while music plays; hovering still scrolls them when paused.
 - Requires macOS 14.2 (was 14.0, where the equalizer could never work).
 - Song-change notifications arrive once the cover is known, so they can show it.

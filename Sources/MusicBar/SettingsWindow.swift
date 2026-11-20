@@ -13,11 +13,16 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         if window == nil {
             let hosting = NSHostingController(rootView: SettingsView(settings: .shared, diagnostics: diagnostics))
             let window = NSWindow(contentViewController: hosting)
-            window.title = NSLocalizedString("MusicBar Settings", comment: "")
-            window.styleMask = [.titled, .closable]
+            // The title comes from the pane on show. The sidebar runs the
+            // window's full height, under the title bar.
+            window.styleMask = [.titled, .closable, .fullSizeContentView]
+            window.toolbarStyle = .unified
             window.isReleasedWhenClosed = false
             window.delegate = self
             window.center()
+            // Lay out first: the toolbar SwiftUI adds changes the frame, and
+            // restoring before that moved the window down on every open.
+            window.layoutIfNeeded()
             // The window is recreated on each open; restore its last position.
             window.setFrameAutosaveName("SettingsWindow")
             self.window = window
@@ -35,27 +40,101 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     }
 }
 
+/// The panes of the settings window, in sidebar order.
+enum SettingsPane: CaseIterable, Identifiable {
+    case general, menuBar, equalizer, shortcuts, history
+
+    var id: Self { self }
+
+    var title: LocalizedStringKey {
+        switch self {
+        case .general: "General"
+        case .menuBar: "Menu Bar"
+        case .equalizer: "Equalizer"
+        case .shortcuts: "Shortcuts"
+        case .history: "History"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .general: "gearshape"
+        case .menuBar: "menubar.rectangle"
+        case .equalizer: "waveform"
+        case .shortcuts: "keyboard"
+        case .history: "clock"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .general: .gray
+        case .menuBar: .blue
+        case .equalizer: .pink
+        case .shortcuts: .indigo
+        case .history: .orange
+        }
+    }
+}
+
+/// Laid out like System Settings: the panes in a sidebar, the chosen one
+/// beside it.
 struct SettingsView: View {
     @ObservedObject var settings: AppSettings
     var diagnostics: () -> String = { "" }
+    @State private var pane = SettingsPane.general
+    @FocusState private var sidebarHasFocus: Bool
 
     var body: some View {
-        TabView {
-            GeneralSettings(settings: settings, diagnostics: diagnostics)
-                .tabItem { Label("General", systemImage: "gearshape") }
-            MenuBarSettings(settings: settings)
-                .tabItem { Label("Menu Bar", systemImage: "menubar.rectangle") }
-            EqualizerSettings(settings: settings)
-                .tabItem { Label("Equalizer", systemImage: "waveform") }
-            ShortcutSettings(settings: settings)
-                .tabItem { Label("Shortcuts", systemImage: "keyboard") }
-            HistorySettings(settings: settings, history: .shared)
-                .tabItem { Label("History", systemImage: "clock") }
+        NavigationSplitView(columnVisibility: .constant(.all)) {
+            List(SettingsPane.allCases, selection: $pane) { pane in
+                Label {
+                    Text(pane.title)
+                } icon: {
+                    PaneIcon(pane: pane)
+                }
+            }
+            // Wide enough for the Spanish names. The column width alone
+            // leaves the sidebar at its narrower default.
+            .frame(minWidth: 210)
+            .navigationSplitViewColumnWidth(210)
+            // Start in the sidebar, so the arrow keys move between panes.
+            .focused($sidebarHasFocus)
+            .onAppear { sidebarHasFocus = true }
+            .toolbar(removing: .sidebarToggle)
+        } detail: {
+            detail
+                .navigationTitle(pane.title)
         }
         // Short enough for a 13-inch screen at its largest text size; each
-        // tab scrolls if it ever needs more.
-        .frame(width: 500, height: 500)
-        .padding(.top, 8)
+        // pane scrolls if it ever needs more.
+        .frame(width: 720, height: 500)
+    }
+
+    @ViewBuilder
+    private var detail: some View {
+        switch pane {
+        case .general: GeneralSettings(settings: settings, diagnostics: diagnostics)
+        case .menuBar: MenuBarSettings(settings: settings)
+        case .equalizer: EqualizerSettings(settings: settings)
+        case .shortcuts: ShortcutSettings(settings: settings)
+        case .history: HistorySettings(settings: settings, history: .shared)
+        }
+    }
+}
+
+/// A sidebar icon in the System Settings manner: a white symbol on a
+/// coloured tile.
+private struct PaneIcon: View {
+    let pane: SettingsPane
+
+    var body: some View {
+        Image(systemName: pane.symbol)
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(.white)
+            .frame(width: 20, height: 20)
+            .background(pane.tint.gradient, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+            .accessibilityHidden(true)
     }
 }
 

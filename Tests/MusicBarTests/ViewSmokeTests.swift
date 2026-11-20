@@ -26,7 +26,7 @@ final class ViewSmokeTests: XCTestCase {
         return model
     }
 
-    func testSettingsTabsLayOut() {
+    func testSettingsPanesLayOut() {
         let settings = AppSettings.shared
         XCTAssertGreaterThan(fittingSize(of: SettingsView(settings: settings)).height, 100)
         for size in [
