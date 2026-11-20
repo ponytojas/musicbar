@@ -40,6 +40,14 @@ final class ViewSmokeTests: XCTestCase {
         }
     }
 
+    func testWelcomeLaysOutWithAndWithoutAShortcut() {
+        let with = fittingSize(of: WelcomeView(cardShortcut: "⌃⌥⌘M", onSettings: {}, onDone: {}))
+        let without = fittingSize(of: WelcomeView(cardShortcut: nil, onSettings: {}, onDone: {}))
+        XCTAssertEqual(with.width, 440)
+        // The shortcut tip is only there when a shortcut is.
+        XCTAssertGreaterThan(with.height, without.height)
+    }
+
     func testCardKeepsItsSizeWhateverIsLoaded() {
         let actions = PopupActions(
             playPause: {}, previous: {}, next: {}, toggleFavorite: {}, addToPlaylist: { _ in },

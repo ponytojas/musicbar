@@ -202,3 +202,17 @@
 /* Hide without a player */
 "Hide when no player is open" = "Ocultar si no hay ningún reproductor abierto";
 "While it's hidden, open MusicBar again from Finder or Spotlight to get back to these settings." = "Mientras esté oculto, vuelve a abrir MusicBar desde el Finder o Spotlight para llegar a estos ajustes.";
+
+/* Welcome */
+"Welcome to MusicBar" = "Te damos la bienvenida a MusicBar";
+"MusicBar lives in your menu bar" = "MusicBar vive en tu barra de menús";
+"It shows what Apple Music or Spotify is playing. Here is what the item does:" = "Muestra lo que suena en Apple Music o Spotify. Esto es lo que hace el elemento:";
+"Click to play or pause." = "Haz clic para reproducir o pausar.";
+"Option-click for the next track, Shift-click for the previous one." = "Opción-clic para la pista siguiente, Mayúsculas-clic para la anterior.";
+"Scroll over it to change the player's volume." = "Haz scroll encima para cambiar el volumen del reproductor.";
+"Hover for the card: seek, shuffle, repeat, favorite, playlists." = "Pasa el cursor para ver la tarjeta: posición, aleatorio, repetir, favorita, playlists.";
+"Right-click for the menu: recently played, sleep timer, settings." = "Clic derecho para el menú: reproducidas recientemente, temporizador, ajustes.";
+"%@ shows the card from anywhere, ready for the keyboard." = "%@ muestra la tarjeta desde cualquier sitio, lista para el teclado.";
+"Open Settings" = "Abrir Ajustes";
+"Got It" = "Entendido";
+"Tips…" = "Consejos…";

@@ -30,6 +30,7 @@ extension StatusItemController {
         } ?? NSLocalizedString("Check for Updates…", comment: "")
         menu.addItem(item(updateTitle, #selector(checkForUpdates)))
         menu.addItem(item(NSLocalizedString("Settings…", comment: ""), #selector(openSettings), key: ","))
+        menu.addItem(item(NSLocalizedString("Tips…", comment: ""), #selector(showTips)))
         menu.addItem(item(NSLocalizedString("About MusicBar", comment: ""), #selector(showAbout)))
         menu.addItem(.separator())
         menu.addItem(item(NSLocalizedString("Quit MusicBar", comment: ""), #selector(quit), key: "q"))
@@ -220,6 +221,10 @@ extension StatusItemController {
 
     @objc func openSettings() {
         settingsWindow.show()
+    }
+
+    @objc private func showTips() {
+        welcomeWindow.show()
     }
 
     @objc private func showAbout() {

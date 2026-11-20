@@ -12,6 +12,7 @@ final class StatusItemController: NSObject {
     let music = MusicController()
     let model = TrackModel()
     let settingsWindow = SettingsWindowController()
+    lazy var welcomeWindow = WelcomeWindowController { [weak self] in self?.settingsWindow.show() }
     private let waveformModel = AudioWaveformModel()
     private let notifier = TrackNotifier()
     private lazy var waveformCapture = AudioWaveformCapture(
@@ -114,6 +115,8 @@ final class StatusItemController: NSObject {
         music.onPermissionChange = { [weak self] in self?.updateAccessibility() }
         Task {
             await AutomationPermission.prepare(for: PlayerApp.allCases.filter(\.isRunning))
+            // After the permission alerts, which are modal and would cover it.
+            welcomeWindow.showOnFirstLaunch()
             await refresh()
             checkForUpdatesIfDue()
         }
