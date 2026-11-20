@@ -74,6 +74,8 @@ final class HoverPopupController {
     /// Opened from the keyboard: stay up until then regardless of the pointer.
     private var heldUntil: Date?
     private var holdTask: Task<Void, Never>?
+    /// The fade-and-drift entrance is running.
+    private var isAnimatingIn = false
     private(set) var isPinned = UserDefaults.standard.bool(forKey: HoverPopupController.pinnedKey)
 
     private static let pinnedKey = "cardPinned"
@@ -298,15 +300,29 @@ final class HoverPopupController {
         panel.alphaValue = 0
         panel.setFrameOrigin(NSPoint(x: origin.x, y: origin.y + 6))
         panel.orderFrontRegardless()
+        isAnimatingIn = true
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.22
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             panel.animator().alphaValue = 1
-            panel.animator().setFrameOrigin(origin)
+            // A window animates its frame, not its origin: through the
+            // animator, setFrameOrigin just jumps there.
+            panel.animator().setFrame(NSRect(origin: origin, size: panel.frame.size), display: true)
+        } completionHandler: { [weak self] in
+            MainActor.assumeIsolated {
+                self?.isAnimatingIn = false
+                // Catch up on anything that changed during the entrance.
+                self?.relayoutIfVisible()
+            }
         }
     }
 
     private func relayoutIfVisible() {
+        // The card's details arrive just as it opens, and the pointer
+        // leaving the item for the card is a change too. Placing the card
+        // then would cut its drift short with a jump; the entrance ends
+        // with a relayout of its own.
+        guard !isAnimatingIn else { return }
         guard let panel, panel.isVisible, let anchorButton else { return }
         guard model.hasTrack else { return hide() }
         // The item's width follows the title, so re-centering on a track
