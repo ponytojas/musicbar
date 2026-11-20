@@ -169,7 +169,13 @@ struct GeneralSettings: View {
         }
         .formStyle(.grouped)
         .confirmationDialog("Reset all settings to their defaults?", isPresented: $confirmsReset) {
-            Button("Reset", role: .destructive) { settings.resetToDefaults() }
+            Button("Reset", role: .destructive) {
+                settings.resetToDefaults()
+                // Also the way out of a wrong cover that got saved.
+                if let covers = ArtworkCache.defaultDirectory {
+                    Task.detached(priority: .utility) { ArtworkCache.clear(covers) }
+                }
+            }
             Button("Cancel", role: .cancel) {}
         }
         // Pick up an approval granted in System Settings meanwhile.

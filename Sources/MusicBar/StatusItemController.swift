@@ -629,7 +629,7 @@ final class StatusItemController: NSObject {
         let album = model.album
         artworkTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            let artwork = await self.music.fetchArtwork(title: title, artist: artist)
+            let artwork = await self.music.fetchArtwork(title: title, artist: artist, cacheKey: key)
             // The track may have changed while the artwork was loading.
             guard !Task.isCancelled, self.currentTrackKey == key else { return }
             // Only while this is still the song on display: after a change

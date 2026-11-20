@@ -778,6 +778,74 @@ final class MusicBarTests: XCTestCase {
         XCTAssertFalse(try trusted("file:///etc/passwd"))
     }
 
+    private func makePNG(side: Int, gray: CGFloat = 0.5) throws -> Data {
+        let rep = try XCTUnwrap(NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: side, pixelsHigh: side, bitsPerSample: 8,
+            samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+            bytesPerRow: 0, bitsPerPixel: 0
+        ))
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        NSColor(white: gray, alpha: 1).setFill()
+        NSRect(x: 0, y: 0, width: side, height: side).fill()
+        NSGraphicsContext.restoreGraphicsState()
+        return try XCTUnwrap(rep.representation(using: .png, properties: [:]))
+    }
+
+    private func pixelWidth(of data: Data) throws -> Int {
+        let source = try XCTUnwrap(CGImageSourceCreateWithData(data as CFData, nil))
+        let properties = try XCTUnwrap(CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any])
+        return try XCTUnwrap(properties[kCGImagePropertyPixelWidth] as? Int)
+    }
+
+    func testArtworkCacheStoresScaledCoversUnderHashedNames() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("MusicBarTests-\(UUID().uuidString)")
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let key = "com.apple.Music|Secret Song|Artist|Album"
+
+        XCTAssertNil(ArtworkCache.data(for: key, in: directory))
+        ArtworkCache.store(try makePNG(side: 1_200), for: key, in: directory)
+        let cached = try XCTUnwrap(ArtworkCache.data(for: key, in: directory))
+        XCTAssertEqual(try pixelWidth(of: cached), ArtworkCache.maximumPixelSize)
+        XCTAssertNil(ArtworkCache.data(for: key + "2", in: directory))
+
+        // The file name says nothing about the song.
+        let name = ArtworkCache.fileURL(for: key, in: directory).lastPathComponent
+        XCTAssertFalse(name.localizedCaseInsensitiveContains("secret"))
+        XCTAssertEqual(name.count, 64 + ".jpg".count)
+
+        // Something that isn't an image is never written.
+        ArtworkCache.store(Data("not an image".utf8), for: "other", in: directory)
+        XCTAssertNil(ArtworkCache.data(for: "other", in: directory))
+
+        ArtworkCache.clear(directory)
+        XCTAssertNil(ArtworkCache.data(for: key, in: directory))
+    }
+
+    func testArtworkCacheDropsTheLeastRecentlyUsedCover() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("MusicBarTests-\(UUID().uuidString)")
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let cover = try makePNG(side: 300)
+        for key in ["old", "middle", "new"] {
+            ArtworkCache.store(cover, for: key, in: directory)
+        }
+        // Make the ages unambiguous, then use "old" so it becomes the newest.
+        let now = Date()
+        for (key, age) in [("old", 300.0), ("middle", 200), ("new", 100)] {
+            try FileManager.default.setAttributes(
+                [.modificationDate: now.addingTimeInterval(-age)],
+                ofItemAtPath: ArtworkCache.fileURL(for: key, in: directory).path
+            )
+        }
+        XCTAssertNotNil(ArtworkCache.data(for: "old", in: directory))
+
+        let size = try XCTUnwrap(ArtworkCache.data(for: "new", in: directory)).count
+        ArtworkCache.prune(directory, limit: size * 2)
+        XCTAssertNil(ArtworkCache.data(for: "middle", in: directory))
+        XCTAssertNotNil(ArtworkCache.data(for: "old", in: directory))
+        XCTAssertNotNil(ArtworkCache.data(for: "new", in: directory))
+    }
+
     func testVersionComparison() {
         XCTAssertTrue(UpdateChecker.isNewer("v1.2", than: "1.1"))
         XCTAssertTrue(UpdateChecker.isNewer("1.10", than: "1.9"))

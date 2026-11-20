@@ -798,12 +798,24 @@ final class MusicController {
         let encodedData: Data
     }
 
-    /// Cover art of the current track on the active player, nil when unavailable.
-    func fetchArtwork(title: String, artist: String) async -> Artwork? {
+    /// Cover art of the current track on the active player, nil when
+    /// unavailable. With a `cacheKey` the cover saved for that song on an
+    /// earlier day is used first, and a freshly fetched one is saved.
+    func fetchArtwork(title: String, artist: String, cacheKey: String? = nil) async -> Artwork? {
         let signpost = PerformanceSignposts.begin("Artwork Pipeline")
         defer { PerformanceSignposts.end("Artwork Pipeline", signpost) }
         let player = activePlayer
         guard !permissionDeniedPlayers.contains(player) else { return nil }
+
+        let cacheDirectory = cacheKey == nil ? nil : ArtworkCache.defaultDirectory
+        if let cacheKey, let cacheDirectory {
+            let cached = await Task.detached(priority: .userInitiated) {
+                ArtworkCache.data(for: cacheKey, in: cacheDirectory)
+            }.value
+            if let cached, let thumbnail = await Self.decodeArtwork(from: cached, maxPixelSize: 68) {
+                return Artwork(thumbnail: thumbnail, encodedData: cached)
+            }
+        }
 
         let data: Data?
         switch player {
@@ -835,6 +847,11 @@ final class MusicController {
               let data,
               let thumbnail = await Self.decodeArtwork(from: data, maxPixelSize: 68)
         else { return nil }
+        if let cacheKey, let cacheDirectory {
+            Task.detached(priority: .utility) {
+                ArtworkCache.store(data, for: cacheKey, in: cacheDirectory)
+            }
+        }
         return Artwork(thumbnail: thumbnail, encodedData: data)
     }
 
